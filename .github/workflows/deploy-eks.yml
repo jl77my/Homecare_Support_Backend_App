@@ -82,3 +82,8 @@ jobs:
           # This ensures the deployment uses the specific SHA pushed in this sprint
           kubectl set image deployment/homecare-backend \
             homecare-backend=${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:latest
+
+      - name: Force rollout restart (pick up ConfigMap/Secret changes)
+        run: |
+          kubectl patch deployment homecare-backend -p "{\"spec\":{\"template\":{\"metadata\":{\"annotations\":{\"restartedAt\":\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"}}}}}"
+          kubectl rollout status deployment/homecare-backend
