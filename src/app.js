@@ -13,7 +13,7 @@ const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_ORIGIN |
     .filter(Boolean);
 
 const corsOptions = {
-    methods: 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
+    methods: 'GET,POST',
     allowedHeaders: 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
     credentials: process.env.CORS_CREDENTIALS !== 'false',
 };
