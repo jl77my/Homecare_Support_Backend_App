@@ -20,7 +20,7 @@ spec:
       containers:
         - name: homecare-backend
           image: your-registry/homecare-backend:latest
-          imagePullPolicy: IfNotPresent
+          imagePullPolicy: Always
           ports:
             - containerPort: 3000
           env:
