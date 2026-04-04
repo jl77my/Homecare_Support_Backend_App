@@ -73,7 +73,7 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
-
+---
 apiVersion: v1
 kind: Secret
 metadata:
@@ -85,7 +85,7 @@ stringData:
   DB_PASSWORD: db-password-here
   DB_NAME: db-name-here
   JWT_SECRET: jwt-secret-here
-
+---
 apiVersion: v1
 kind: ConfigMap
 metadata:
