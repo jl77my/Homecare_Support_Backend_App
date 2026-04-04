@@ -73,3 +73,22 @@ spec:
             limits:
               cpu: 500m
               memory: 512Mi
+
+apiVersion: v1
+kind: Secret
+metadata:
+  name: homecare-backend-secrets
+type: Opaque
+stringData:
+  DB_HOST: db-host-here
+  DB_USER: db-user-here
+  DB_PASSWORD: db-password-here
+  DB_NAME: db-name-here
+  JWT_SECRET: jwt-secret-here
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: homecare-backend-config
+data:
+  CORS_ORIGIN: ""
