@@ -7,12 +7,22 @@ const verifyToken = (req, res, next) => {
         return res.status(403).json({ error: "No token provided" });
     }
 
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_SECRET);
-        req.user = decoded; // Adds { userId, username } to the request object
-        next(); // Move to the next function (the actual API logic)
+   try {
+        // 3. Verify cryptographic token signature using secret
+        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_fallback_secret_key');
+
+        // 4. Attach decoded payload to req.user
+        // Expected payload structure: { userId: 'xxx-guid-xxx', role: 'caregiver', email: '...' }
+        req.user = {
+            userId: decoded.userId || decoded.id, // Handles both naming conventions
+            role: decoded.role,
+            email: decoded.email
+        };
+
+        next(); // Proceed to controller logic
     } catch (err) {
-        return res.status(401).json({ error: "Unauthorized: Invalid token" });
+        console.error("JWT Verification Error:", err.message);
+        return res.status(401).json({ error: "Unauthorized: Invalid or expired token" });
     }
 };
 
