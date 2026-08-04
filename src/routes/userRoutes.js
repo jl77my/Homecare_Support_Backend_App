@@ -8,6 +8,7 @@ router.post('/register', userController.registerUser);
 // POST /api/users/login
 router.post('/login', userController.loginUser);
 
+
 router.get('/health', userController.healthCheck);
 
 module.exports = router;
