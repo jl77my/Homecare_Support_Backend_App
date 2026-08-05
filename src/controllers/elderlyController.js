@@ -22,20 +22,29 @@ exports.confirmMedication = async (req, res) => {
 
 // 2. Log Daily Mood (cite: 2)
 exports.logMood = async (req, res) => {
-  const elderlyId = req.user.userId;
+  // Extract authenticated user ID populated by JWT middleware
+  const elderlyId = req.user.userId || req.user.id;
   const { mood } = req.body; // 'Happy', 'Neutral', or 'Sad'
-  const id = crypto.randomUUID();
+
+  if (!mood) {
+    return res.status(400).json({ error: "Mood selection is required." });
+  }
+
+  const id = crypto.randomUUID(); // GUID Primary Key
 
   try {
     const query = `
       INSERT INTO DailyMoods (Id, ElderlyId, Mood, CreatedBy, UpdatedBy)
       VALUES (?, ?, ?, ?, ?)
     `;
-    await db.query(query, [id, elderlyId, mood, elderlyId, elderlyId]);
+    
+    // Use db.execute for mysql2 prepared statements
+    await db.execute(query, [id, elderlyId, mood, elderlyId, elderlyId]);
+
     return res.status(201).json({ message: "Daily mood recorded successfully", moodId: id });
   } catch (err) {
-    console.error("Log Mood Error:", err);
-    return res.status(500).json({ error: "Failed to log daily mood" });
+    console.error("Log Mood SQL Execution Error:", err);
+    return res.status(500).json({ error: "Failed to log daily mood: " + err.message });
   }
 };
 

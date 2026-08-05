@@ -11,21 +11,23 @@ exports.registerUser = async (req, res) => {
         return res.status(400).json({ message: "All fields are required." });
     }
 
+    const normalizedEmail = Email.trim().toLowerCase();
+
     try {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(Password, saltRounds);
 
-        // 2. Generate a Guid for the new user
+        // 2. Generate a Guid for the new user Primary Key
         const newId = uuidv4();
         
-        // 3. SQL Query matching your standardized columns
+        // 3. SQL Query matching all 5 standardized audit columns
         const query = `
-            INSERT INTO Users (Id, Name, Email, Password, Role, CreatedBy) 
-            VALUES (?, ?, ?, ?, ?, ?)
+            INSERT INTO Users (Id, Name, Email, Password, Role, CreatedBy, UpdatedBy) 
+            VALUES (?, ?, ?, ?, ?, ?, ?)
         `;
 
-        // For registration, CreatedBy is the user themselves (newId)
-        await db.execute(query, [newId, Name, Email, hashedPassword, Role, newId]);
+        // For registration, CreatedBy and UpdatedBy are set to the new user's ID
+        await db.execute(query, [newId, Name, normalizedEmail, hashedPassword, Role, newId, newId]);
 
         res.status(201).json({
             message: "User registered successfully!",
@@ -33,10 +35,12 @@ exports.registerUser = async (req, res) => {
         });
     } catch (error) {
         console.error(error);
+        if (error.code === 'ER_DUP_ENTRY' || error.errno === 1062) {
+            return res.status(409).json({ message: "Email address is already registered." });
+        }
         res.status(500).json({ message: "Server error during registration.", error: error.message });
     }
 };
-
 
 exports.loginUser = async (req, res) => {
     try {
@@ -51,14 +55,15 @@ exports.loginUser = async (req, res) => {
             return res.status(500).json({ error: 'JWT secret is not configured' });
         }
 
+        const normalizedEmail = Email.trim().toLowerCase();
+
         // 1. Find the user by Email
         const [rows] = await db.execute(
-            'SELECT * FROM Users WHERE Email = ?', 
-            [Email]
+            'SELECT * FROM Users WHERE LOWER(Email) = ?', 
+            [normalizedEmail]
         );
 
         if (rows.length === 0) {
-            // Senior Engineer Tip: Use generic messages for security
             return res.status(401).json({ error: "Invalid Email or Password" });
         }
 
@@ -102,4 +107,3 @@ exports.healthCheck = (req, res) => {
         timestamp: new Date().toISOString()
     });
 };
-
