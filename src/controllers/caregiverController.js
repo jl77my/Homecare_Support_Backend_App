@@ -128,3 +128,21 @@ exports.sendMessage = async (req, res) => {
     return res.status(500).json({ error: "Failed to send message" });
   }
 };
+
+// GET /api/caregiver/assigned-patients - Fetches dropdown list of assigned seniors
+exports.getAssignedPatients = async (req, res) => {
+  const caregiverId = req.user.userId;
+
+  try {
+    const query = `
+      SELECT u.Id as id, u.Name as name, u.Email as email
+      FROM Users u
+      JOIN CaregiverAssignments ca ON u.Id = ca.ElderlyId
+      WHERE ca.CaregiverId = ? AND ca.Status = 'ACTIVE'
+    `;
+    const [patients] = await db.execute(query, [caregiverId]);
+    return res.status(200).json({ patients });
+  } catch (error) {
+    return res.status(500).json({ error: "Failed to fetch assigned patients." });
+  }
+};

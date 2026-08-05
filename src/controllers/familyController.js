@@ -118,3 +118,55 @@ exports.sendMessage = async (req, res) => {
     return res.status(500).json({ error: "Failed to send message" });
   }
 };
+
+// POST /api/family/consume-pairing-code
+exports.linkFamilyByCode = async (req, res) => {
+  const familyMemberId = req.user.userId; // Extracted from JWT Bearer Token
+  const { code, relationship } = req.body; // e.g. 'FAM-4921'
+
+  try {
+    // 1. Validate Pairing Code
+    const [codes] = await db.execute(
+      'SELECT * FROM PairingCodes WHERE Code = ? AND IsUsed = FALSE AND ExpiresAt > NOW()',
+      [code]
+    );
+
+    if (codes.length === 0) {
+      return res.status(400).json({ error: "Invalid or expired family pairing code." });
+    }
+
+    const pairingRecord = codes[0];
+    const elderlyId = pairingRecord.ElderlyId;
+    const linkId = uuidv4(); // GUID PK
+
+    // 2. Insert into FamilyElderlyLinks with Mandatory Audit Columns
+    const query = `
+      INSERT INTO FamilyElderlyLinks 
+      (Id, FamilyMemberId, ElderlyId, Relationship, CreatedBy, UpdatedBy)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `;
+
+    await db.execute(query, [
+      linkId,
+      familyMemberId,
+      elderlyId,
+      relationship || 'Family Member',
+      familyMemberId, // CreatedBy
+      familyMemberId  // UpdatedBy
+    ]);
+
+    // 3. Mark Code as Used
+    await db.execute(
+      'UPDATE PairingCodes SET IsUsed = TRUE, UpdatedBy = ? WHERE Id = ?',
+      [familyMemberId, pairingRecord.Id]
+    );
+
+    return res.status(201).json({
+      message: "Successfully linked to elderly patient!",
+      linkId: linkId
+    });
+  } catch (error) {
+    console.error("Family Pairing Error:", error);
+    return res.status(500).json({ error: "Failed to process family pairing." });
+  }
+};

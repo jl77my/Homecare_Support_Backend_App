@@ -4,6 +4,7 @@ const userRoutes = require('./routes/userRoutes');
 const caregiverRoutes = require('./routes/caregiverRoutes');
 const elderlyRoutes = require('./routes/elderlyRoutes');
 const familyRoutes = require('./routes/familyRoutes');
+const pairingRoutes = require('./routes/pairingRoutes');
 
 dotenv.config();
 const app = express();
@@ -48,6 +49,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/caregiver', caregiverRoutes);
 app.use('/api/elderly', elderlyRoutes);
 app.use('/api/family', familyRoutes);
+app.use('/api/pairing', pairingRoutes);
 
 app.options('/api/users/register', (req, res) => {
     res.sendStatus(204);
