@@ -152,3 +152,31 @@ exports.linkFamilyByCode = async (req, res) => {
     return res.status(500).json({ error: "Failed to process family pairing." });
   }
 };
+
+// 5. Fetch List of Linked Seniors for Family Member
+exports.getLinkedElderly = async (req, res) => {
+  const familyMemberId = req.user.userId; // Extracted from JWT middleware
+
+  try {
+    const query = `
+      SELECT 
+        f.ElderlyId AS elderlyId,
+        u.Name AS name,
+        u.Email AS email,
+        f.Relationship AS relationship,
+        f.CreatedBy,
+        f.DatetimeCreated,
+        f.UpdatedBy,
+        f.DatetimeUpdated
+      FROM FamilyElderlyLinks f
+      JOIN Users u ON f.ElderlyId = u.Id
+      WHERE f.FamilyMemberId = ?
+      ORDER BY f.DatetimeCreated DESC
+    `;
+    const [seniors] = await db.execute(query, [familyMemberId]);
+    return res.status(200).json({ seniors });
+  } catch (err) {
+    console.error("Get Linked Elderly Error:", err);
+    return res.status(500).json({ error: "Failed to fetch linked elderly list" });
+  }
+};
