@@ -7,6 +7,6 @@ router.post('/tasks', verifyToken, caregiverController.createTask);
 router.post('/medications', verifyToken, caregiverController.scheduleMedication);
 router.post('/health', verifyToken, caregiverController.recordHealth);
 router.post('/reports', verifyToken, caregiverController.submitCareReport);
-router.post('/chat', verifyToken, caregiverController.sendMessage);
+router.get('/assigned-patients', verifyToken, caregiverController.getAssignedPatients);
 
 module.exports = router;

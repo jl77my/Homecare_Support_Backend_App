@@ -7,5 +7,6 @@ const elderlyController = require('../controllers/elderlyController');
 router.post('/medications/confirm', verifyToken, elderlyController.confirmMedication);
 router.post('/mood', verifyToken, elderlyController.logMood);
 router.post('/sos', verifyToken, elderlyController.triggerSos);
+router.get('/medications', verifyToken, elderlyController.getMedications);
 
 module.exports = router;

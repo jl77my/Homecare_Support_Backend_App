@@ -95,3 +95,29 @@ exports.consumeCode = async (req, res) => {
     return res.status(500).json({ error: "Failed to process pairing code." });
   }
 };
+
+/**
+ * 3. GET /api/pairing/status
+ * Checks if the authenticated elderly user has an active caregiver or family link
+ */
+exports.getPairingStatus = async (req, res) => {
+  const elderlyId = req.user.userId;
+
+  try {
+    const [caregivers] = await db.execute(
+      "SELECT Id FROM CaregiverAssignments WHERE ElderlyId = ? AND Status = 'ACTIVE'",
+      [elderlyId]
+    );
+
+    const [family] = await db.execute(
+      "SELECT Id FROM FamilyElderlyLinks WHERE ElderlyId = ?",
+      [elderlyId]
+    );
+
+    const isLinked = caregivers.length > 0 || family.length > 0;
+    return res.status(200).json({ isLinked });
+  } catch (error) {
+    console.error("Get Pairing Status Error:", error);
+    return res.status(500).json({ error: "Failed to fetch pairing status." });
+  }
+};

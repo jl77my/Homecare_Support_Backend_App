@@ -68,3 +68,24 @@ exports.triggerSos = async (req, res) => {
     return res.status(500).json({ error: "Failed to trigger SOS alert" });
   }
 };
+
+// 4. Get Scheduled Medication Reminders
+exports.getMedications = async (req, res) => {
+  const elderlyId = req.user.userId;
+
+  try {
+    const query = `
+      SELECT 
+        Id, PatientId, MedicationName, Dosage, ScheduledTime, 
+        CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated
+      FROM Medications
+      WHERE PatientId = ?
+      ORDER BY ScheduledTime ASC
+    `;
+    const [medications] = await db.query(query, [elderlyId]);
+    return res.status(200).json({ medications });
+  } catch (err) {
+    console.error("Get Medications Error:", err);
+    return res.status(500).json({ error: "Failed to fetch medications" });
+  }
+};

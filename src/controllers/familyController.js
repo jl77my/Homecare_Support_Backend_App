@@ -100,24 +100,6 @@ exports.getElderlyMoods = async (req, res) => {
   }
 };
 
-// 5. Send In-App Chat Message to Caregiver (cite: 2)
-exports.sendMessage = async (req, res) => {
-  const senderId = req.user.userId;
-  const { receiverId, messageText } = req.body;
-  const id = crypto.randomUUID();
-
-  try {
-    const query = `
-      INSERT INTO Messages (Id, SenderId, ReceiverId, MessageText, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    await db.query(query, [id, senderId, receiverId, messageText, senderId, senderId]);
-    return res.status(201).json({ message: "Message sent to caregiver", messageId: id });
-  } catch (err) {
-    console.error("Send Message Error:", err);
-    return res.status(500).json({ error: "Failed to send message" });
-  }
-};
 
 // POST /api/family/consume-pairing-code
 exports.linkFamilyByCode = async (req, res) => {

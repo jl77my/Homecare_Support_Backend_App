@@ -8,7 +8,6 @@ router.get('/tasks/:patientId', verifyToken, familyController.getCareTasks);
 router.get('/health/:patientId', verifyToken, familyController.getHealthRecords);
 router.get('/reports/:patientId', verifyToken, familyController.getCareReports);
 router.get('/moods/:patientId', verifyToken, familyController.getElderlyMoods);
-router.post('/chat', verifyToken, familyController.sendMessage);
 router.post('/consume-code', verifyToken, familyController.linkFamilyByCode);
 router.get('/linked-elderly', verifyToken, familyController.getLinkedElderly);
 

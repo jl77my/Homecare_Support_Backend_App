@@ -19,7 +19,7 @@ services:
     environment:
       - MYSQL_ROOT_PASSWORD=${DB_PASSWORD}
       - MYSQL_DATABASE=${DB_NAME}
-      TZ: "Asia/Kuala_Lumpur"
+      - TZ=Asia/Kuala_Lumpur
     command: --default-time-zone='+08:00'
     volumes:
       - mysql_data:/var/lib/mysql

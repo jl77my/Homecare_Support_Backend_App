@@ -108,26 +108,6 @@ exports.submitCareReport = async (req, res) => {
   }
 };
 
-// 5. Send In-App Chat Message (cite: 112)
-exports.sendMessage = async (req, res) => {
-  // Sender identity extracted directly from verified JWT token
-  const senderId = req.user.userId; 
-  const { receiverId, messageText } = req.body;
-  const id = crypto.randomUUID();
-
-  try {
-    const query = `
-      INSERT INTO Messages (Id, SenderId, ReceiverId, MessageText, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `;
-    // Pass senderId for SenderId, CreatedBy, and UpdatedBy
-    await db.query(query, [id, senderId, receiverId, messageText, senderId, senderId]);
-    return res.status(201).json({ message: "Message sent", messageId: id });
-  } catch (err) {
-    console.error("Send Message Error:", err);
-    return res.status(500).json({ error: "Failed to send message" });
-  }
-};
 
 // GET /api/caregiver/assigned-patients - Fetches dropdown list of assigned seniors
 exports.getAssignedPatients = async (req, res) => {
