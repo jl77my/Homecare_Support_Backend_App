@@ -1,31 +1,20 @@
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
+const { getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
-/**
- * 1. GET /api/chat/messages/:elderlyId
- * Retrieves isolated message thread for a specific senior channel
- */
 exports.getChannelMessages = async (req, res) => {
   const { elderlyId } = req.params;
-
   try {
     const query = `
       SELECT 
-        c.Id,
-        c.ElderlyId,
-        c.SenderId,
-        u.Name AS SenderName,
-        u.Role AS SenderRole,
-        c.MessageText,
-        c.DatetimeCreated
+        c.Id, c.ElderlyId, c.SenderId, u.Name AS SenderName, 
+        u.Role AS SenderRole, c.MessageText, c.DatetimeCreated
       FROM ChatMessages c
       JOIN Users u ON c.SenderId = u.Id
       WHERE c.ElderlyId = ?
       ORDER BY c.DatetimeCreated ASC
     `;
-
     const [rows] = await db.execute(query, [elderlyId]);
-
     return res.status(200).json({
       messages: rows.map(r => ({
         id: r.Id,
@@ -43,12 +32,8 @@ exports.getChannelMessages = async (req, res) => {
   }
 };
 
-/**
- * 2. POST /api/chat/send
- * Sends a message into an isolated senior channel with 5 mandatory audit columns
- */
 exports.sendMessage = async (req, res) => {
-  const authorGuid = req.user.userId; // Extracted from JWT token
+  const authorGuid = req.user.userId; 
   const { elderlyId, messageText, receiverId } = req.body;
 
   if (!elderlyId || !messageText || messageText.trim() === '') {
@@ -57,27 +42,19 @@ exports.sendMessage = async (req, res) => {
 
   try {
     const messageGuid = uuidv4();
+    const timestamp = getCurrentMalaysiaMySQLDate();
 
     const query = `
       INSERT INTO ChatMessages 
-      (Id, ElderlyId, SenderId, ReceiverId, MessageText, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+       (Id, ElderlyId, SenderId, ReceiverId, MessageText, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-
     await db.execute(query, [
-      messageGuid,
-      elderlyId,
-      authorGuid,
-      receiverId || null,
-      messageText.trim(),
-      authorGuid, // CreatedBy
-      authorGuid  // UpdatedBy
+      messageGuid, elderlyId, authorGuid, receiverId || null, messageText.trim(),
+      authorGuid, timestamp, authorGuid, timestamp
     ]);
 
-    return res.status(201).json({
-      message: "Message sent successfully",
-      messageId: messageGuid
-    });
+    return res.status(201).json({ message: "Message sent successfully", messageId: messageGuid });
   } catch (error) {
     console.error("Send Message Error:", error);
     return res.status(500).json({ error: "Failed to send message." });

@@ -16,30 +16,26 @@ const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_ORIGIN |
     .filter(Boolean);
 
 const corsOptions = {
-    methods: 'GET,POST',
+    methods: 'GET,POST,PUT,DELETE,OPTIONS',
     allowedHeaders: 'Content-Type, Authorization, X-Requested-With, Accept, Origin',
     credentials: process.env.CORS_CREDENTIALS !== 'false',
 };
 
+// Ensure your CORS header middleware uses the updated methods string:
 app.use((req, res, next) => {
     const requestOrigin = req.headers.origin;
-
     if (requestOrigin && (allowedOrigins.length === 0 || allowedOrigins.includes(requestOrigin))) {
         res.setHeader('Access-Control-Allow-Origin', requestOrigin);
         res.setHeader('Vary', 'Origin');
     }
-
     res.setHeader('Access-Control-Allow-Methods', corsOptions.methods);
     res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders);
-
     if (corsOptions.credentials) {
         res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
-
     if (req.method === 'OPTIONS') {
         return res.sendStatus(204);
     }
-
     next();
 });
 

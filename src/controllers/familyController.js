@@ -1,18 +1,48 @@
 const db = require('../config/db');
 const crypto = require('crypto');
+const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
-// 1. Monitor Care Tasks Progress for Elderly (cite: 2)
+exports.createTask = async (req, res) => {
+  const familyMemberId = req.user.userId;
+  const elderlyId = req.params.elderlyId; 
+  const { title, description, dueDate } = req.body;
+  const id = crypto.randomUUID();
+
+  try {
+    const currentTimestamp = getCurrentMalaysiaMySQLDate();
+    const formattedDueDate = dueDate ? formatMySQLDate(dueDate) : currentTimestamp;
+
+    const query = `
+      INSERT INTO Tasks 
+      (Id, Title, Description, Status, DueDate, AssignedTo, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?)
+    `;
+    
+    await db.execute(query, [
+      id, title, description || '', formattedDueDate, elderlyId, 
+      familyMemberId, currentTimestamp, familyMemberId, currentTimestamp
+    ]);
+
+    return res.status(201).json({ message: "Task created successfully", taskId: id });
+  } catch (err) {
+    console.error("Create Task Error:", err);
+    return res.status(500).json({ error: "Failed to create task" });
+  }
+};
+
 exports.getCareTasks = async (req, res) => {
-  const { patientId } = req.params;
+  const { elderlyId } = req.params;
 
   try {
     const query = `
-      SELECT Id, Title, Description, Status, DueDate, CreatedBy, DatetimeCreated 
+      SELECT 
+        Id, Title, Description, Status, DueDate, AssignedTo, 
+        CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated 
       FROM Tasks 
       WHERE AssignedTo = ? 
       ORDER BY DatetimeCreated DESC
     `;
-    const [tasks] = await db.query(query, [patientId]);
+    const [tasks] = await db.execute(query, [elderlyId]);
     return res.status(200).json({ tasks });
   } catch (err) {
     console.error("Get Care Tasks Error:", err);
@@ -20,20 +50,44 @@ exports.getCareTasks = async (req, res) => {
   }
 };
 
-// 2. View Health Vitals and Rule-Based Alerts (cite: 2)
+exports.updateTaskStatus = async (req, res) => {
+  const userId = req.user.userId;
+  const { taskId } = req.params;
+  const { status } = req.body; // 'Completed' or 'Pending'
+
+  try {
+    const { getCurrentMalaysiaMySQLDate } = require('../helper/helper');
+    const timestamp = getCurrentMalaysiaMySQLDate();
+    
+    // Strictly enforcing audit columns
+    const query = `
+      UPDATE Tasks 
+      SET Status = ?, UpdatedBy = ?, DatetimeUpdated = ? 
+      WHERE Id = ?
+    `;
+    
+    await db.execute(query, [status, userId, timestamp, taskId]);
+    return res.status(200).json({ message: "Task status updated successfully" });
+  } catch (err) {
+    console.error("Update Task Error:", err);
+    return res.status(500).json({ error: "Failed to update task status" });
+  }
+};
+
 exports.getHealthRecords = async (req, res) => {
-  const { patientId } = req.params;
+  const { elderlyId } = req.params;
 
   try {
     const query = `
-      SELECT Id, HeartRate, BloodPressure, BloodSugar, Notes, CreatedBy, DatetimeCreated 
+      SELECT 
+        Id, HeartRate, BloodPressure, BloodSugar, Notes, 
+        CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated 
       FROM HealthRecords 
-      WHERE PatientId = ? 
+      WHERE ElderlyId = ? 
       ORDER BY DatetimeCreated DESC
     `;
-    const [records] = await db.query(query, [patientId]);
+    const [records] = await db.execute(query, [elderlyId]);
 
-    // Process rule-based alerts on retrieved records for family visibility (cite: 2)
     const recordsWithAlerts = records.map(rec => {
       let alerts = [];
       if (rec.BloodPressure) {
@@ -62,18 +116,19 @@ exports.getHealthRecords = async (req, res) => {
   }
 };
 
-// 3. View Daily Care Reports with Photo Evidence (cite: 2)
 exports.getCareReports = async (req, res) => {
-  const { patientId } = req.params;
+  const { elderlyId } = req.params;
 
   try {
     const query = `
-      SELECT Id, HealthStatusNotes, DailyActivities, Observations, PhotoUrl, CreatedBy, DatetimeCreated 
+      SELECT 
+        Id, HealthStatusNotes, DailyActivities, Observations, PhotoUrl, 
+        CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated 
       FROM CareReports 
-      WHERE PatientId = ? 
+      WHERE ElderlyId = ? 
       ORDER BY DatetimeCreated DESC
     `;
-    const [reports] = await db.query(query, [patientId]);
+    const [reports] = await db.execute(query, [elderlyId]);
     return res.status(200).json({ reports });
   } catch (err) {
     console.error("Get Care Reports Error:", err);
@@ -81,18 +136,18 @@ exports.getCareReports = async (req, res) => {
   }
 };
 
-// 4. View Elderly Daily Mood Logs (cite: 2)
 exports.getElderlyMoods = async (req, res) => {
-  const { patientId } = req.params;
+  const { elderlyId } = req.params;
 
   try {
     const query = `
-      SELECT Id, Mood, DatetimeCreated 
+      SELECT 
+        Id, Mood, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated 
       FROM DailyMoods 
       WHERE ElderlyId = ? 
       ORDER BY DatetimeCreated DESC
     `;
-    const [moods] = await db.query(query, [patientId]);
+    const [moods] = await db.execute(query, [elderlyId]);
     return res.status(200).json({ moods });
   } catch (err) {
     console.error("Get Elderly Moods Error:", err);
@@ -100,14 +155,11 @@ exports.getElderlyMoods = async (req, res) => {
   }
 };
 
-
-// POST /api/family/consume-pairing-code
 exports.linkFamilyByCode = async (req, res) => {
-  const familyMemberId = req.user.userId; // Extracted from JWT Bearer Token
-  const { code, relationship } = req.body; // e.g. 'FAM-4921'
+  const familyMemberId = req.user.userId;
+  const { code, relationship } = req.body;
 
   try {
-    // 1. Validate Pairing Code
     const [codes] = await db.execute(
       'SELECT * FROM PairingCodes WHERE Code = ? AND IsUsed = FALSE AND ExpiresAt > NOW()',
       [code]
@@ -119,9 +171,8 @@ exports.linkFamilyByCode = async (req, res) => {
 
     const pairingRecord = codes[0];
     const elderlyId = pairingRecord.ElderlyId;
-    const linkId = uuidv4(); // GUID PK
+    const linkId = crypto.randomUUID();
 
-    // 2. Insert into FamilyElderlyLinks with Mandatory Audit Columns
     const query = `
       INSERT INTO FamilyElderlyLinks 
       (Id, FamilyMemberId, ElderlyId, Relationship, CreatedBy, UpdatedBy)
@@ -133,11 +184,10 @@ exports.linkFamilyByCode = async (req, res) => {
       familyMemberId,
       elderlyId,
       relationship || 'Family Member',
-      familyMemberId, // CreatedBy
-      familyMemberId  // UpdatedBy
+      familyMemberId,
+      familyMemberId
     ]);
 
-    // 3. Mark Code as Used
     await db.execute(
       'UPDATE PairingCodes SET IsUsed = TRUE, UpdatedBy = ? WHERE Id = ?',
       [familyMemberId, pairingRecord.Id]
@@ -153,9 +203,8 @@ exports.linkFamilyByCode = async (req, res) => {
   }
 };
 
-// 5. Fetch List of Linked Seniors for Family Member
 exports.getLinkedElderly = async (req, res) => {
-  const familyMemberId = req.user.userId; // Extracted from JWT middleware
+  const familyMemberId = req.user.userId;
 
   try {
     const query = `

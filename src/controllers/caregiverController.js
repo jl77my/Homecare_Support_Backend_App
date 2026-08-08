@@ -1,17 +1,15 @@
 const db = require('../config/db');
 const crypto = require('crypto');
+const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
-// Helper: Rule-based evaluation for automated health alerts (cite: 107, 108)
 const evaluateHealthAlerts = (bloodPressure, heartRate, bloodSugar) => {
   let alerts = [];
   if (bloodPressure) {
     const parts = bloodPressure.split('/');
     if (parts.length === 2) {
-      const systolic = parseInt(parts[0], 10);
-      const diastolic = parseInt(parts[1], 10);
-      if (systolic >= 140 || diastolic >= 90) {
-        alerts.push("⚠️ High Blood Pressure Alert!");
-      }
+      const sys = parseInt(parts[0], 10);
+      const dia = parseInt(parts[1], 10);
+      if (sys >= 140 || dia >= 90) alerts.push("⚠️ High Blood Pressure Alert!");
     }
   }
   if (heartRate) {
@@ -25,18 +23,28 @@ const evaluateHealthAlerts = (bloodPressure, heartRate, bloodSugar) => {
   return alerts;
 };
 
-// 1. Assign Care Task (cite: 99)
 exports.createTask = async (req, res) => {
   const caregiverId = req.user.userId;
-  const { title, description, dueDate, assignedTo } = req.body;
+  const elderlyId = req.params.elderlyId; // FIX: Extract from URL parameter
+  const { title, description, dueDate } = req.body; 
   const id = crypto.randomUUID();
 
   try {
+    const currentTimestamp = getCurrentMalaysiaMySQLDate();
+    const formattedDueDate = dueDate ? formatMySQLDate(dueDate) : currentTimestamp;
+
     const query = `
-      INSERT INTO Tasks (Id, Title, Description, Status, DueDate, AssignedTo, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, 'Pending', ?, ?, ?, ?)
+      INSERT INTO Tasks 
+      (Id, Title, Description, Status, DueDate, AssignedTo, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?)
     `;
-    await db.query(query, [id, title, description, dueDate, assignedTo, caregiverId, caregiverId]);
+    
+    // Execute query securely with all 5 mandatory audit columns
+    await db.execute(query, [
+      id, title, description || '', formattedDueDate, elderlyId, 
+      caregiverId, currentTimestamp, caregiverId, currentTimestamp
+    ]);
+
     return res.status(201).json({ message: "Task assigned successfully", taskId: id });
   } catch (err) {
     console.error("Create Task Error:", err);
@@ -44,18 +52,79 @@ exports.createTask = async (req, res) => {
   }
 };
 
-// 2. Schedule Medication Reminder (cite: 104)
+exports.getCareTasks = async (req, res) => {
+  const caregiverId = req.user.userId; 
+  const { elderlyId } = req.params;
+
+  try {
+    const [assignmentCheck] = await db.execute(
+      "SELECT Id FROM CaregiverAssignments WHERE CaregiverId = ? AND ElderlyId = ? AND Status = 'ACTIVE'",
+      [caregiverId, elderlyId]
+    );
+
+    if (assignmentCheck.length === 0) {
+      return res.status(403).json({ error: "Unauthorized: You are not assigned to this patient." });
+    }
+
+    const query = `
+      SELECT 
+        Id, Title, Description, Status, DueDate, 
+        AssignedTo, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated
+      FROM Tasks 
+      WHERE AssignedTo = ? 
+      ORDER BY DueDate ASC
+    `;
+    
+    const [tasks] = await db.execute(query, [elderlyId]);
+    return res.status(200).json({ tasks });
+  } catch (err) {
+    console.error("Get Care Tasks Error:", err);
+    return res.status(500).json({ error: "Failed to fetch care tasks" });
+  }
+};
+
+// Add to controllers/caregiverController.js
+exports.updateTaskStatus = async (req, res) => {
+  const userId = req.user.userId;
+  const { taskId } = req.params;
+  const { status } = req.body; // e.g., 'Completed'
+
+  try {
+    const currentTimestamp = getCurrentMalaysiaMySQLDate();
+    
+    // Strictly update the mandatory audit columns
+    const query = `
+      UPDATE Tasks 
+      SET Status = ?, UpdatedBy = ?, DatetimeUpdated = ? 
+      WHERE Id = ?
+    `;
+    
+    await db.execute(query, [status, userId, currentTimestamp, taskId]);
+    
+    return res.status(200).json({ message: "Task status updated successfully" });
+  } catch (err) {
+    console.error("Update Task Error:", err);
+    return res.status(500).json({ error: "Failed to update task status" });
+  }
+};
+
+
 exports.scheduleMedication = async (req, res) => {
   const caregiverId = req.user.userId;
   const { patientId, medicationName, dosage, scheduledTime } = req.body;
   const id = crypto.randomUUID();
 
   try {
+    const currentTimestamp = getCurrentMalaysiaMySQLDate();
     const query = `
-      INSERT INTO Medications (Id, PatientId, MedicationName, Dosage, ScheduledTime, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO Medications 
+      (Id, PatientId, MedicationName, Dosage, ScheduledTime, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    await db.query(query, [id, patientId, medicationName, dosage, scheduledTime, caregiverId, caregiverId]);
+    await db.execute(query, [
+      id, patientId, medicationName, dosage, scheduledTime, 
+      caregiverId, currentTimestamp, caregiverId, currentTimestamp
+    ]);
     return res.status(201).json({ message: "Medication scheduled successfully", medicationId: id });
   } catch (err) {
     console.error("Schedule Medication Error:", err);
@@ -63,44 +132,47 @@ exports.scheduleMedication = async (req, res) => {
   }
 };
 
-// 3. Record Vitals & Return Rule-Based Alerts (cite: 106, 107)
 exports.recordHealth = async (req, res) => {
   const caregiverId = req.user.userId;
   const { patientId, heartRate, bloodPressure, bloodSugar, notes } = req.body;
   const id = crypto.randomUUID();
 
   try {
+    const currentTimestamp = getCurrentMalaysiaMySQLDate();
     const query = `
-      INSERT INTO HealthRecords (Id, PatientId, HeartRate, BloodPressure, BloodSugar, Notes, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO HealthRecords 
+      (Id, PatientId, HeartRate, BloodPressure, BloodSugar, Notes, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    await db.query(query, [id, patientId, heartRate, bloodPressure, bloodSugar, notes, caregiverId, caregiverId]);
+    await db.execute(query, [
+      id, patientId, heartRate, bloodPressure, bloodSugar, notes || '', 
+      caregiverId, currentTimestamp, caregiverId, currentTimestamp
+    ]);
 
     const triggeredAlerts = evaluateHealthAlerts(bloodPressure, heartRate, bloodSugar);
-
-    return res.status(201).json({
-      message: "Health record saved",
-      recordId: id,
-      alerts: triggeredAlerts
-    });
+    return res.status(201).json({ message: "Health record saved", recordId: id, alerts: triggeredAlerts });
   } catch (err) {
     console.error("Record Health Error:", err);
     return res.status(500).json({ error: "Failed to log health data" });
   }
 };
 
-// 4. Submit Daily Care Report (cite: 109, 110)
 exports.submitCareReport = async (req, res) => {
   const caregiverId = req.user.userId;
   const { patientId, healthStatusNotes, dailyActivities, observations, photoUrl } = req.body;
   const id = crypto.randomUUID();
 
   try {
+    const currentTimestamp = getCurrentMalaysiaMySQLDate();
     const query = `
-      INSERT INTO CareReports (Id, PatientId, HealthStatusNotes, DailyActivities, Observations, PhotoUrl, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO CareReports 
+      (Id, PatientId, HealthStatusNotes, DailyActivities, Observations, PhotoUrl, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    await db.query(query, [id, patientId, healthStatusNotes, dailyActivities, observations, photoUrl, caregiverId, caregiverId]);
+    await db.execute(query, [
+      id, patientId, healthStatusNotes, dailyActivities, observations, photoUrl || null, 
+      caregiverId, currentTimestamp, caregiverId, currentTimestamp
+    ]);
     return res.status(201).json({ message: "Care report submitted", reportId: id });
   } catch (err) {
     console.error("Submit Report Error:", err);
@@ -108,11 +180,8 @@ exports.submitCareReport = async (req, res) => {
   }
 };
 
-
-// GET /api/caregiver/assigned-patients - Fetches dropdown list of assigned seniors
 exports.getAssignedPatients = async (req, res) => {
   const caregiverId = req.user.userId;
-
   try {
     const query = `
       SELECT u.Id as id, u.Name as name, u.Email as email

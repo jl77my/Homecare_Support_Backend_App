@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
+const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
 exports.registerUser = async (req, res) => {
     const { Name, Email, Password, Role } = req.body;

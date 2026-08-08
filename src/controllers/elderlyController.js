@@ -1,18 +1,19 @@
 const db = require('../config/db');
 const crypto = require('crypto');
+const { getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
-// 1. Confirm Medication Intake (cite: 2)
 exports.confirmMedication = async (req, res) => {
   const patientId = req.user.userId;
   const { medicationId, status } = req.body;
   const id = crypto.randomUUID();
 
   try {
+    const timestamp = getCurrentMalaysiaMySQLDate();
     const query = `
-      INSERT INTO MedicationLogs (Id, MedicationId, PatientId, Status, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO MedicationLogs (Id, MedicationId, PatientId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `;
-    await db.query(query, [id, medicationId, patientId, status || 'Taken', patientId, patientId]);
+    await db.execute(query, [id, medicationId, patientId, status || 'Taken', patientId, timestamp, patientId, timestamp]);
     return res.status(201).json({ message: "Medication confirmation logged successfully", logId: id });
   } catch (err) {
     console.error("Confirm Medication Error:", err);
@@ -20,27 +21,19 @@ exports.confirmMedication = async (req, res) => {
   }
 };
 
-// 2. Log Daily Mood (cite: 2)
 exports.logMood = async (req, res) => {
-  // Extract authenticated user ID populated by JWT middleware
   const elderlyId = req.user.userId || req.user.id;
-  const { mood } = req.body; // 'Happy', 'Neutral', or 'Sad'
-
-  if (!mood) {
-    return res.status(400).json({ error: "Mood selection is required." });
-  }
-
-  const id = crypto.randomUUID(); // GUID Primary Key
-
+  const { mood } = req.body; 
+  if (!mood) return res.status(400).json({ error: "Mood selection is required." });
+  
+  const id = crypto.randomUUID(); 
   try {
+    const timestamp = getCurrentMalaysiaMySQLDate();
     const query = `
-      INSERT INTO DailyMoods (Id, ElderlyId, Mood, CreatedBy, UpdatedBy)
-      VALUES (?, ?, ?, ?, ?)
+      INSERT INTO DailyMoods (Id, ElderlyId, Mood, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `;
-    
-    // Use db.execute for mysql2 prepared statements
-    await db.execute(query, [id, elderlyId, mood, elderlyId, elderlyId]);
-
+    await db.execute(query, [id, elderlyId, mood, elderlyId, timestamp, elderlyId, timestamp]);
     return res.status(201).json({ message: "Daily mood recorded successfully", moodId: id });
   } catch (err) {
     console.error("Log Mood SQL Execution Error:", err);
@@ -48,41 +41,36 @@ exports.logMood = async (req, res) => {
   }
 };
 
-// 3. Trigger SOS Emergency Alert (cite: 2)
 exports.triggerSos = async (req, res) => {
   const elderlyId = req.user.userId;
   const id = crypto.randomUUID();
 
   try {
+    const timestamp = getCurrentMalaysiaMySQLDate();
     const query = `
-      INSERT INTO SosAlerts (Id, ElderlyId, Status, CreatedBy, UpdatedBy)
-      VALUES (?, ?, 'Active', ?, ?)
+      INSERT INTO SosAlerts (Id, ElderlyId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, 'Active', ?, ?, ?, ?)
     `;
-    await db.query(query, [id, elderlyId, elderlyId, elderlyId]);
-    return res.status(201).json({ 
-      message: "🚨 SOS Emergency Alert Sent!", 
-      alertId: id 
-    });
+    await db.execute(query, [id, elderlyId, elderlyId, timestamp, elderlyId, timestamp]);
+    return res.status(201).json({ message: "SOS Emergency Alert Sent!", alertId: id });
   } catch (err) {
     console.error("Trigger SOS Error:", err);
     return res.status(500).json({ error: "Failed to trigger SOS alert" });
   }
 };
 
-// 4. Get Scheduled Medication Reminders
 exports.getMedications = async (req, res) => {
   const elderlyId = req.user.userId;
-
   try {
     const query = `
       SELECT 
-        Id, PatientId, MedicationName, Dosage, ScheduledTime, 
-        CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated
+         Id, PatientId, MedicationName, Dosage, ScheduledTime, 
+         CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated
       FROM Medications
       WHERE PatientId = ?
       ORDER BY ScheduledTime ASC
     `;
-    const [medications] = await db.query(query, [elderlyId]);
+    const [medications] = await db.execute(query, [elderlyId]);
     return res.status(200).json({ medications });
   } catch (err) {
     console.error("Get Medications Error:", err);
