@@ -25,7 +25,7 @@ const evaluateHealthAlerts = (bloodPressure, heartRate, bloodSugar) => {
 
 exports.createTask = async (req, res) => {
   const caregiverId = req.user.userId;
-  const elderlyId = req.params.elderlyId; // FIX: Extract from URL parameter
+  const elderlyId = req.params.elderlyId;
   const { title, description, dueDate } = req.body; 
   const id = crypto.randomUUID();
 
@@ -39,7 +39,6 @@ exports.createTask = async (req, res) => {
       VALUES (?, ?, ?, 'Pending', ?, ?, ?, ?, ?, ?)
     `;
     
-    // Execute query securely with all 5 mandatory audit columns
     await db.execute(query, [
       id, title, description || '', formattedDueDate, elderlyId, 
       caregiverId, currentTimestamp, caregiverId, currentTimestamp
@@ -83,16 +82,13 @@ exports.getCareTasks = async (req, res) => {
   }
 };
 
-// Add to controllers/caregiverController.js
 exports.updateTaskStatus = async (req, res) => {
   const userId = req.user.userId;
   const { taskId } = req.params;
-  const { status } = req.body; // e.g., 'Completed'
+  const { status } = req.body;
 
   try {
     const currentTimestamp = getCurrentMalaysiaMySQLDate();
-    
-    // Strictly update the mandatory audit columns
     const query = `
       UPDATE Tasks 
       SET Status = ?, UpdatedBy = ?, DatetimeUpdated = ? 
@@ -100,7 +96,6 @@ exports.updateTaskStatus = async (req, res) => {
     `;
     
     await db.execute(query, [status, userId, currentTimestamp, taskId]);
-    
     return res.status(200).json({ message: "Task status updated successfully" });
   } catch (err) {
     console.error("Update Task Error:", err);
@@ -108,22 +103,34 @@ exports.updateTaskStatus = async (req, res) => {
   }
 };
 
-
 exports.scheduleMedication = async (req, res) => {
   const caregiverId = req.user.userId;
-  const { patientId, medicationName, dosage, scheduledTime } = req.body;
+  const { patientId, medicationName, dosage, scheduledDate, scheduledTime, category, frequency, notes } = req.body;
+  const targetElderlyId = patientId; 
   const id = crypto.randomUUID();
 
   try {
     const currentTimestamp = getCurrentMalaysiaMySQLDate();
     const query = `
       INSERT INTO Medications 
-      (Id, PatientId, MedicationName, Dosage, ScheduledTime, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (Id, ElderlyId, MedicationName, Dosage, ScheduledDate, ScheduledTime, Category, Frequency, Notes, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
+    
     await db.execute(query, [
-      id, patientId, medicationName, dosage, scheduledTime, 
-      caregiverId, currentTimestamp, caregiverId, currentTimestamp
+      id, 
+      targetElderlyId, 
+      medicationName, 
+      dosage || '', 
+      scheduledDate || null, 
+      scheduledTime, 
+      category || 'medication', 
+      frequency || 'daily', 
+      notes || '',
+      caregiverId, 
+      currentTimestamp, 
+      caregiverId, 
+      currentTimestamp
     ]);
     return res.status(201).json({ message: "Medication scheduled successfully", medicationId: id });
   } catch (err) {
@@ -141,7 +148,7 @@ exports.recordHealth = async (req, res) => {
     const currentTimestamp = getCurrentMalaysiaMySQLDate();
     const query = `
       INSERT INTO HealthRecords 
-      (Id, PatientId, HeartRate, BloodPressure, BloodSugar, Notes, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      (Id, ElderlyId, HeartRate, BloodPressure, BloodSugar, Notes, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await db.execute(query, [
@@ -166,7 +173,7 @@ exports.submitCareReport = async (req, res) => {
     const currentTimestamp = getCurrentMalaysiaMySQLDate();
     const query = `
       INSERT INTO CareReports 
-      (Id, PatientId, HealthStatusNotes, DailyActivities, Observations, PhotoUrl, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      (Id, ElderlyId, HealthStatusNotes, DailyActivities, Observations, PhotoUrl, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
     await db.execute(query, [

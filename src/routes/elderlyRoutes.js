@@ -8,5 +8,6 @@ router.post('/medications/confirm', verifyToken, elderlyController.confirmMedica
 router.post('/mood', verifyToken, elderlyController.logMood);
 router.post('/sos', verifyToken, elderlyController.triggerSos);
 router.get('/medications', verifyToken, elderlyController.getMedications);
+router.delete('/medications/:id', verifyToken, elderlyController.deleteMedication);
 
 module.exports = router;

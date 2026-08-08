@@ -3,21 +3,47 @@ const crypto = require('crypto');
 const { getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
 exports.confirmMedication = async (req, res) => {
-  const patientId = req.user.userId;
-  const { medicationId, status } = req.body;
-  const id = crypto.randomUUID();
+  const userId = req.user.userId;
+  const { medicationId, status, elderlyId } = req.body;
+  const targetElderlyId = elderlyId || userId;
 
   try {
     const timestamp = getCurrentMalaysiaMySQLDate();
-    const query = `
-      INSERT INTO MedicationLogs (Id, MedicationId, PatientId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `;
-    await db.execute(query, [id, medicationId, patientId, status || 'Taken', patientId, timestamp, patientId, timestamp]);
-    return res.status(201).json({ message: "Medication confirmation logged successfully", logId: id });
+    
+    // Check if the medication was already marked as completed today
+    const [existingLogs] = await db.execute(
+      `SELECT Id FROM MedicationLogs WHERE MedicationId = ? AND DATE(DatetimeCreated) = CURDATE()`,
+      [medicationId]
+    );
+
+    if (existingLogs.length > 0) {
+      // Toggle Off (Reset to Pending)
+      await db.execute('DELETE FROM MedicationLogs WHERE Id = ?', [existingLogs[0].Id]);
+      return res.status(200).json({ message: "Medication reset to pending successfully" });
+    } else {
+      // Toggle On (Mark as Done) with mandatory audit columns
+      const id = crypto.randomUUID();
+      const query = `
+        INSERT INTO MedicationLogs (Id, MedicationId, ElderlyId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `;
+      await db.execute(query, [id, medicationId, targetElderlyId, status || 'Taken', userId, timestamp, userId, timestamp]);
+      return res.status(201).json({ message: "Medication confirmation logged successfully", logId: id });
+    }
   } catch (err) {
     console.error("Confirm Medication Error:", err);
     return res.status(500).json({ error: "Failed to confirm medication" });
+  }
+};
+
+exports.deleteMedication = async (req, res) => {
+  const { id } = req.params;
+  try {
+    await db.execute('DELETE FROM Medications WHERE Id = ?', [id]);
+    return res.status(200).json({ message: "Medication deleted successfully" });
+  } catch (err) {
+    console.error("Delete Medication Error:", err);
+    return res.status(500).json({ error: "Failed to delete medication" });
   }
 };
 
@@ -60,15 +86,29 @@ exports.triggerSos = async (req, res) => {
 };
 
 exports.getMedications = async (req, res) => {
-  const elderlyId = req.user.userId;
+  const userRole = req.user.role.toLowerCase();
+  let elderlyId = req.user.userId;
+
+  if (userRole !== 'elderly') {
+    if (req.query.elderlyId) {
+      elderlyId = req.query.elderlyId;
+    } else {
+      return res.status(400).json({ error: "ElderlyId context is required." });
+    }
+  }
+
   try {
     const query = `
       SELECT 
-         Id, PatientId, MedicationName, Dosage, ScheduledTime, 
-         CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated
-      FROM Medications
-      WHERE PatientId = ?
-      ORDER BY ScheduledTime ASC
+          m.Id, m.ElderlyId AS ElderlyId, m.MedicationName, m.Dosage, 
+          m.ScheduledDate, m.ScheduledTime, m.Category, m.Frequency, m.Notes,
+          m.CreatedBy, u.Name AS CreatorName, m.DatetimeCreated, m.UpdatedBy, m.DatetimeUpdated,
+          (SELECT ml.Status FROM MedicationLogs ml WHERE ml.MedicationId = m.Id AND DATE(ml.DatetimeCreated) = CURDATE() ORDER BY ml.DatetimeCreated DESC LIMIT 1) AS Status,
+          (SELECT ml.DatetimeCreated FROM MedicationLogs ml WHERE ml.MedicationId = m.Id AND DATE(ml.DatetimeCreated) = CURDATE() ORDER BY ml.DatetimeCreated DESC LIMIT 1) AS CompletedAt
+      FROM Medications m
+      LEFT JOIN Users u ON m.CreatedBy = u.Id
+      WHERE m.ElderlyId = ?
+      ORDER BY m.ScheduledDate ASC, m.ScheduledTime ASC
     `;
     const [medications] = await db.execute(query, [elderlyId]);
     return res.status(200).json({ medications });

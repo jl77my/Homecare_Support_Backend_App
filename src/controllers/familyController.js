@@ -34,13 +34,14 @@ exports.getCareTasks = async (req, res) => {
   const { elderlyId } = req.params;
 
   try {
+    // FIX: Sorted by DueDate ASC to meet requirements
     const query = `
       SELECT 
         Id, Title, Description, Status, DueDate, AssignedTo, 
         CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated 
       FROM Tasks 
       WHERE AssignedTo = ? 
-      ORDER BY DatetimeCreated DESC
+      ORDER BY DueDate ASC
     `;
     const [tasks] = await db.execute(query, [elderlyId]);
     return res.status(200).json({ tasks });
@@ -53,13 +54,11 @@ exports.getCareTasks = async (req, res) => {
 exports.updateTaskStatus = async (req, res) => {
   const userId = req.user.userId;
   const { taskId } = req.params;
-  const { status } = req.body; // 'Completed' or 'Pending'
+  const { status } = req.body; 
 
   try {
-    const { getCurrentMalaysiaMySQLDate } = require('../helper/helper');
     const timestamp = getCurrentMalaysiaMySQLDate();
     
-    // Strictly enforcing audit columns
     const query = `
       UPDATE Tasks 
       SET Status = ?, UpdatedBy = ?, DatetimeUpdated = ? 
