@@ -67,20 +67,25 @@ exports.logMood = async (req, res) => {
   }
 };
 
-exports.triggerSos = async (req, res) => {
-  const elderlyId = req.user.userId;
-  const id = crypto.randomUUID();
+exports.triggerSos = async (req, res) => {   
+  const elderlyId = req.user.userId;   
+  const id = crypto.randomUUID();   
+  try {     
+    const timestamp = getCurrentMalaysiaMySQLDate();     
+    const query = `       
+      INSERT INTO SosAlerts (Id, ElderlyId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)       
+      VALUES (?, ?, 'Active', ?, ?, ?, ?)     
+    `;     
+    await db.execute(query, [id, elderlyId, elderlyId, timestamp, elderlyId, timestamp]);     
+    
+    // Broadcast the real-time event to connected Caregivers and Family Members
+    if (req.io) {
+        req.io.emit('SOS_ALERT_EMITTED', { elderlyId, alertId: id, status: 'Active' });
+    }
 
-  try {
-    const timestamp = getCurrentMalaysiaMySQLDate();
-    const query = `
-      INSERT INTO SosAlerts (Id, ElderlyId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
-      VALUES (?, ?, 'Active', ?, ?, ?, ?)
-    `;
-    await db.execute(query, [id, elderlyId, elderlyId, timestamp, elderlyId, timestamp]);
-    return res.status(201).json({ message: "SOS Emergency Alert Sent!", alertId: id });
-  } catch (err) {
-    console.error("Trigger SOS Error:", err);
+    return res.status(201).json({ message: "SOS Emergency Alert Sent!", alertId: id });   
+  } catch (err) {     
+    console.error("Trigger SOS Error:", err);     
     return res.status(500).json({ error: "Failed to trigger SOS alert" });
   }
 };

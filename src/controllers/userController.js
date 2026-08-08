@@ -7,29 +7,22 @@ const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/help
 exports.registerUser = async (req, res) => {
     const { Name, Email, Password, Role } = req.body;
 
-    // 1. Validation: Ensure all fields are provided
     if (!Name || !Email || !Password || !Role) {
         return res.status(400).json({ message: "All fields are required." });
     }
-
     const normalizedEmail = Email.trim().toLowerCase();
 
     try {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(Password, saltRounds);
-
-        // 2. Generate a Guid for the new user Primary Key
         const newId = uuidv4();
-        
-        // 3. SQL Query matching all 5 standardized audit columns
+        const timestamp = getCurrentMalaysiaMySQLDate();
+                 
         const query = `
-            INSERT INTO Users (Id, Name, Email, Password, Role, CreatedBy, UpdatedBy) 
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO Users (Id, Name, Email, Password, Role, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated) 
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `;
-
-        // For registration, CreatedBy and UpdatedBy are set to the new user's ID
-        await db.execute(query, [newId, Name, normalizedEmail, hashedPassword, Role, newId, newId]);
-
+        await db.execute(query, [newId, Name, normalizedEmail, hashedPassword, Role, newId, timestamp, newId, timestamp]);
         res.status(201).json({
             message: "User registered successfully!",
             userId: newId
@@ -51,26 +44,18 @@ exports.loginUser = async (req, res) => {
         if (!Email || !Password) {
             return res.status(400).json({ error: 'Email and Password are required' });
         }
-
         if (!jwtSecret) {
             return res.status(500).json({ error: 'JWT secret is not configured' });
         }
 
         const normalizedEmail = Email.trim().toLowerCase();
-
-        // 1. Find the user by Email
-        const [rows] = await db.execute(
-            'SELECT * FROM Users WHERE LOWER(Email) = ?', 
-            [normalizedEmail]
-        );
+        const [rows] = await db.execute('SELECT * FROM Users WHERE LOWER(Email) = ?', [normalizedEmail]);
 
         if (rows.length === 0) {
             return res.status(401).json({ error: "Invalid Email or Password" });
         }
 
         const user = rows[0];
-
-        // 2. Compare the provided password with the Hashed password in DB
         const isMatch = await bcrypt.compare(Password, user.Password);
 
         if (!isMatch) {
@@ -82,7 +67,6 @@ exports.loginUser = async (req, res) => {
             email: user.Email,
             role: user.Role
         };
-
         const token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '1h' });
 
         res.status(200).json({ 
@@ -95,7 +79,6 @@ exports.loginUser = async (req, res) => {
                 role: user.Role
             }
         });
-
     } catch (error) {
         console.error(error);
         res.status(500).json({ error: "Login process failed" });
@@ -109,44 +92,49 @@ exports.healthCheck = (req, res) => {
     });
 };
 
-// 1. PUT /api/user/profile - Update Profile Details
+// FIX: Validate Name, Handle Photo Upload, and Enforce DatetimeUpdated Audit Column
 exports.updateUserProfile = async (req, res) => {
-  const userId = req.user.userId; // Extracted from JWT
+  const userId = req.user.userId; 
   const { name, phoneNumber, gender, profilePhotoUrl } = req.body;
 
+  if (!name || name.trim() === '') {
+    return res.status(400).json({ error: "Full Name cannot be empty." });
+  }
+
   try {
+    const timestamp = getCurrentMalaysiaMySQLDate();
     const query = `
       UPDATE Users 
-      SET Name = ?, PhoneNumber = ?, Gender = ?, ProfilePhotoUrl = ?, UpdatedBy = ?, DatetimeUpdated = CURRENT_TIMESTAMP(3)
+      SET Name = ?, PhoneNumber = ?, Gender = ?, ProfilePhotoUrl = ?, UpdatedBy = ?, DatetimeUpdated = ?
       WHERE Id = ?
     `;
-
-    await db.execute(query, [name, phoneNumber, gender, profilePhotoUrl || null, userId, userId]);
-    return res.status(200).json({ message: "Profile updated successfully." });
+    await db.execute(query, [name, phoneNumber || null, gender || null, profilePhotoUrl || null, userId, timestamp, userId]);
+    return res.status(200).json({ message: "Profile updated successfully.", profilePhotoUrl });
   } catch (error) {
     console.error("Update Profile Error:", error);
     return res.status(500).json({ error: "Failed to update profile." });
   }
 };
 
-// 2. POST /api/user/change-password
+// FIX: Enforce DatetimeUpdated Audit Column
 exports.changePassword = async (req, res) => {
   const userId = req.user.userId;
   const { currentPassword, newPassword } = req.body;
 
   try {
-    const [rows] = await db.execute("SELECT PasswordHash FROM Users WHERE Id = ?", [userId]);
+    const [rows] = await db.execute("SELECT Password FROM Users WHERE Id = ?", [userId]);
     if (rows.length === 0) return res.status(404).json({ error: "User not found." });
 
-    const isMatch = await bcrypt.compare(currentPassword, rows[0].PasswordHash);
+    const isMatch = await bcrypt.compare(currentPassword, rows[0].Password);
     if (!isMatch) return res.status(400).json({ error: "Current password is incorrect." });
 
     const newHash = await bcrypt.hash(newPassword, 10);
-    await db.execute(
-      "UPDATE Users SET PasswordHash = ?, UpdatedBy = ?, DatetimeUpdated = CURRENT_TIMESTAMP(3) WHERE Id = ?",
-      [newHash, userId, userId]
-    );
+    const timestamp = getCurrentMalaysiaMySQLDate();
 
+    await db.execute(
+      "UPDATE Users SET Password = ?, UpdatedBy = ?, DatetimeUpdated = ? WHERE Id = ?",
+      [newHash, userId, timestamp, userId]
+    );
     return res.status(200).json({ message: "Password updated successfully." });
   } catch (error) {
     console.error("Change Password Error:", error);
