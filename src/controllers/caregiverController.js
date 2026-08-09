@@ -291,3 +291,22 @@ exports.getAssignedPatients = async (req, res) => {
     return res.status(500).json({ error: "Failed to fetch assigned patients." });  
   }
 };
+
+exports.getElderlyMoods = async (req, res) => {            
+  const { elderlyId } = req.params;            
+  try {                    
+    // This query strictly enforces the 12:00 AM reset by matching the creation date with CURDATE()
+    const query = `                            
+      SELECT Mood 
+      FROM DailyMoods                             
+      WHERE ElderlyId = ? AND DATE(DatetimeCreated) = CURDATE()                            
+      ORDER BY DatetimeCreated DESC 
+      LIMIT 1                    
+    `;                    
+    const [rows] = await db.execute(query, [elderlyId]);                    
+    const todayMood = rows.length > 0 ? rows[0].Mood : null;
+    return res.status(200).json({ todayMood });            
+  } catch (err) {                    
+    return res.status(500).json({ error: "Failed to fetch elderly mood history" });     
+  }  
+};

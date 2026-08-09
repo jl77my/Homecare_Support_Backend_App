@@ -170,21 +170,23 @@ exports.acknowledgeReport = async (req, res) => {
   }
 };
 
-exports.getElderlyMoods = async (req, res) => {         
-  const { elderlyId } = req.params;         
-  try {               
-    const query = `                     
-      SELECT                        
-      Id, Mood, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated                      
-      FROM DailyMoods                      
-      WHERE ElderlyId = ?                      
-      ORDER BY DatetimeCreated DESC               
-    `;               
-    const [moods] = await db.execute(query, [elderlyId]);               
-    return res.status(200).json({ moods });         
-  } catch (err) {               
-    return res.status(500).json({ error: "Failed to fetch elderly mood history" });  
-  } 
+exports.getElderlyMoods = async (req, res) => {            
+  const { elderlyId } = req.params;            
+  try {                    
+    // This query strictly enforces the 12:00 AM reset by matching the creation date with CURDATE()
+    const query = `                            
+      SELECT Mood 
+      FROM DailyMoods                             
+      WHERE ElderlyId = ? AND DATE(DatetimeCreated) = CURDATE()                            
+      ORDER BY DatetimeCreated DESC 
+      LIMIT 1                    
+    `;                    
+    const [rows] = await db.execute(query, [elderlyId]);                    
+    const todayMood = rows.length > 0 ? rows[0].Mood : null;
+    return res.status(200).json({ todayMood });            
+  } catch (err) {                    
+    return res.status(500).json({ error: "Failed to fetch elderly mood history" });     
+  }  
 };
 
 exports.linkFamilyByCode = async (req, res) => {         
