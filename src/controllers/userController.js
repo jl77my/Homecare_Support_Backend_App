@@ -179,27 +179,32 @@ exports.deleteCareConnection = async (req, res) => {
   const requesterRole = req.user.role.toLowerCase();
   const { connectionId } = req.params;
   try {
-    const [rows] = await db.execute("SELECT * FROM CareConnections WHERE Id = ?", [connectionId]);
-    if (rows.length === 0) return res.status(404).json({ error: "Connection not found." });
+    const [rows] = await db.execute("SELECT * FROM CareConnections WHERE Id = ? AND Status = 'ACTIVE'", [connectionId]);
+    if (rows.length === 0) return res.status(404).json({ error: "Active connection not found." });
     
     const connection = rows[0];
     const targetUserId = connection.ConnectedUserId;
-    const targetRole = connection.RoleType.toLowerCase();
+    // Handle generic field extraction
+    const targetRole = connection.RoleType ? connection.RoleType.toLowerCase() : '';
+
+    // NEW: Soft Delete Logic enforcing mandatory audit columns
+    const timestamp = getCurrentMalaysiaMySQLDate();
+    const softDeleteQuery = "UPDATE CareConnections SET Status = 'REMOVED', UpdatedBy = ?, DatetimeUpdated = ? WHERE Id = ?";
 
     if (requesterRole === 'elderly' && connection.ElderlyId === requesterId) {
-      await db.execute("DELETE FROM CareConnections WHERE Id = ?", [connectionId]);
+      await db.execute(softDeleteQuery, [requesterId, timestamp, connectionId]);
       return res.status(200).json({ message: "Connection removed by Elderly owner." });
     }
     if (requesterRole === 'family') {
       if (targetRole === 'caregiver' || targetUserId === requesterId) {
-        await db.execute("DELETE FROM CareConnections WHERE Id = ?", [connectionId]);
+        await db.execute(softDeleteQuery, [requesterId, timestamp, connectionId]);
         return res.status(200).json({ message: "Connection removed by Family member." });
       }
       return res.status(403).json({ error: "Family members cannot remove other family members." });
     }
     if (requesterRole === 'caregiver') {
       if (targetUserId === requesterId) {
-        await db.execute("DELETE FROM CareConnections WHERE Id = ?", [connectionId]);
+        await db.execute(softDeleteQuery, [requesterId, timestamp, connectionId]);
         return res.status(200).json({ message: "Successfully left care team." });
       }
       return res.status(403).json({ error: "Caregivers can only remove themselves from a patient." });
@@ -207,6 +212,6 @@ exports.deleteCareConnection = async (req, res) => {
     return res.status(403).json({ error: "Unauthorized operation." });
   } catch (error) {
     console.error("Delete Connection Error:", error);
-    return res.status(500).json({ error: "Failed to delete care connection." });
+    return res.status(500).json({ error: "Failed to remove care connection." });
   }
 };
