@@ -1,3 +1,4 @@
+// controllers/userController.js
 const db = require('../config/db');
 const { v4: uuidv4 } = require('uuid');
 const bcrypt = require('bcrypt');
@@ -6,18 +7,16 @@ const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/help
 
 exports.registerUser = async (req, res) => {
     const { Name, Email, Password, Role } = req.body;
-
     if (!Name || !Email || !Password || !Role) {
         return res.status(400).json({ message: "All fields are required." });
     }
     const normalizedEmail = Email.trim().toLowerCase();
-
     try {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(Password, saltRounds);
         const newId = uuidv4();
         const timestamp = getCurrentMalaysiaMySQLDate();
-                 
+        
         const query = `
             INSERT INTO Users (Id, Name, Email, Password, Role, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -40,35 +39,31 @@ exports.loginUser = async (req, res) => {
     try {
         const { Email, Password } = req.body;
         const jwtSecret = process.env.JWT_SECRET;
-
         if (!Email || !Password) {
             return res.status(400).json({ error: 'Email and Password are required' });
         }
         if (!jwtSecret) {
             return res.status(500).json({ error: 'JWT secret is not configured' });
         }
-
         const normalizedEmail = Email.trim().toLowerCase();
         const [rows] = await db.execute('SELECT * FROM Users WHERE LOWER(Email) = ?', [normalizedEmail]);
-
         if (rows.length === 0) {
             return res.status(401).json({ error: "Invalid Email or Password" });
         }
-
+        
         const user = rows[0];
         const isMatch = await bcrypt.compare(Password, user.Password);
-
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid Email or Password" });
         }
-
+        
         const tokenPayload = {
             id: user.Id,
             email: user.Email,
             role: user.Role
         };
         const token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '1h' });
-
+        
         res.status(200).json({ 
             message: "Login successful", 
             token,
@@ -76,7 +71,10 @@ exports.loginUser = async (req, res) => {
                 id: user.Id,
                 name: user.Name,
                 email: user.Email,
-                role: user.Role
+                role: user.Role,
+                phoneNumber: user.PhoneNumber,       // NEW: Map to payload
+                gender: user.Gender,                 // NEW: Map to payload
+                profilePhotoUrl: user.ProfilePhotoUrl // NEW: Map to payload
             }
         });
     } catch (error) {
@@ -92,15 +90,12 @@ exports.healthCheck = (req, res) => {
     });
 };
 
-// FIX: Validate Name, Handle Photo Upload, and Enforce DatetimeUpdated Audit Column
 exports.updateUserProfile = async (req, res) => {
   const userId = req.user.userId; 
   const { name, phoneNumber, gender, profilePhotoUrl } = req.body;
-
   if (!name || name.trim() === '') {
     return res.status(400).json({ error: "Full Name cannot be empty." });
   }
-
   try {
     const timestamp = getCurrentMalaysiaMySQLDate();
     const query = `
@@ -116,21 +111,19 @@ exports.updateUserProfile = async (req, res) => {
   }
 };
 
-// FIX: Enforce DatetimeUpdated Audit Column
 exports.changePassword = async (req, res) => {
   const userId = req.user.userId;
   const { currentPassword, newPassword } = req.body;
-
   try {
     const [rows] = await db.execute("SELECT Password FROM Users WHERE Id = ?", [userId]);
     if (rows.length === 0) return res.status(404).json({ error: "User not found." });
-
+    
     const isMatch = await bcrypt.compare(currentPassword, rows[0].Password);
     if (!isMatch) return res.status(400).json({ error: "Current password is incorrect." });
-
+    
     const newHash = await bcrypt.hash(newPassword, 10);
     const timestamp = getCurrentMalaysiaMySQLDate();
-
+    
     await db.execute(
       "UPDATE Users SET Password = ?, UpdatedBy = ?, DatetimeUpdated = ? WHERE Id = ?",
       [newHash, userId, timestamp, userId]
@@ -142,19 +135,15 @@ exports.changePassword = async (req, res) => {
   }
 };
 
-// 3. GET /api/user/care-connections
 exports.getCareConnections = async (req, res) => {
   const userId = req.user.userId;
   const userRole = req.user.role.toLowerCase();
-
   try {
     let elderlyId = userId;
-
     if (userRole !== 'elderly') {
       elderlyId = req.query.elderlyId;
       if (!elderlyId) return res.status(400).json({ error: "ElderlyId context is required." });
     }
-
     const query = `
       SELECT 
         c.Id AS ConnectionId,
@@ -167,16 +156,13 @@ exports.getCareConnections = async (req, res) => {
       JOIN Users u ON c.ConnectedUserId = u.Id
       WHERE c.ElderlyId = ? AND c.Status = 'ACTIVE'
     `;
-
     const [rows] = await db.execute(query, [elderlyId]);
-
-    // Fetch Senior details if requested by Caregiver/Family
+    
     let elderlyName = "Self";
     if (userRole !== 'elderly') {
       const [eRows] = await db.execute("SELECT Name FROM Users WHERE Id = ?", [elderlyId]);
       if (eRows.length > 0) elderlyName = eRows[0].Name;
     }
-
     return res.status(200).json({
       elderlyName,
       caregivers: rows.filter(r => r.ConnectedUserRole.toLowerCase() === 'caregiver'),
@@ -188,28 +174,22 @@ exports.getCareConnections = async (req, res) => {
   }
 };
 
-// 4. DELETE /api/user/care-connections/:connectionId - Enforce Privilege Rules
 exports.deleteCareConnection = async (req, res) => {
   const requesterId = req.user.userId;
   const requesterRole = req.user.role.toLowerCase();
   const { connectionId } = req.params;
-
   try {
-    // Retrieve connection record
     const [rows] = await db.execute("SELECT * FROM CareConnections WHERE Id = ?", [connectionId]);
     if (rows.length === 0) return res.status(404).json({ error: "Connection not found." });
-
+    
     const connection = rows[0];
     const targetUserId = connection.ConnectedUserId;
     const targetRole = connection.RoleType.toLowerCase();
 
-    // Enforce Rule 1: Elderly Senior can delete ANY link connected to their profile
     if (requesterRole === 'elderly' && connection.ElderlyId === requesterId) {
       await db.execute("DELETE FROM CareConnections WHERE Id = ?", [connectionId]);
       return res.status(200).json({ message: "Connection removed by Elderly owner." });
     }
-
-    // Enforce Rule 2: Family Members can delete Caregivers and remove Themselves
     if (requesterRole === 'family') {
       if (targetRole === 'caregiver' || targetUserId === requesterId) {
         await db.execute("DELETE FROM CareConnections WHERE Id = ?", [connectionId]);
@@ -217,8 +197,6 @@ exports.deleteCareConnection = async (req, res) => {
       }
       return res.status(403).json({ error: "Family members cannot remove other family members." });
     }
-
-    // Enforce Rule 3: Professional Caregivers can ONLY remove Themselves
     if (requesterRole === 'caregiver') {
       if (targetUserId === requesterId) {
         await db.execute("DELETE FROM CareConnections WHERE Id = ?", [connectionId]);
@@ -226,7 +204,6 @@ exports.deleteCareConnection = async (req, res) => {
       }
       return res.status(403).json({ error: "Caregivers can only remove themselves from a patient." });
     }
-
     return res.status(403).json({ error: "Unauthorized operation." });
   } catch (error) {
     console.error("Delete Connection Error:", error);
