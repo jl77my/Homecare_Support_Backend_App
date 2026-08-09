@@ -1,72 +1,99 @@
-const express = require('express');  
-const http = require('http'); 
-const { Server } = require('socket.io'); 
-const dotenv = require('dotenv');  
+const express = require('express');   
+const http = require('http');  
+const { Server } = require('socket.io');  
+const dotenv = require('dotenv');   
+const cron = require('node-cron'); 
+const db = require('./config/db'); 
 
-const userRoutes = require('./routes/userRoutes');  
-const caregiverRoutes = require('./routes/caregiverRoutes');  
-const elderlyRoutes = require('./routes/elderlyRoutes');  
-const familyRoutes = require('./routes/familyRoutes');  
-const pairingRoutes = require('./routes/pairingRoutes');  
-const chatRoutes = require('./routes/chatRoutes');  
+const userRoutes = require('./routes/userRoutes');   
+const caregiverRoutes = require('./routes/caregiverRoutes');   
+const elderlyRoutes = require('./routes/elderlyRoutes');   
+const familyRoutes = require('./routes/familyRoutes');   
+const pairingRoutes = require('./routes/pairingRoutes');   
+const chatRoutes = require('./routes/chatRoutes');   
 
-dotenv.config();  
-const app = express();  
-const server = http.createServer(app); 
+dotenv.config();   
+const app = express();   
+const server = http.createServer(app);  
 
-const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_ORIGIN || '')          
-    .split(',')          
-    .map((origin) => origin.trim())          
-    .filter(Boolean);  
+const allowedOrigins = (process.env.CORS_ORIGIN || process.env.FRONTEND_ORIGIN || '')               
+    .split(',')               
+    .map((origin) => origin.trim())               
+    .filter(Boolean);   
 
-// FIX: Socket.io forbids origin: '*' when credentials are true. 
-// Setting origin: true dynamically reflects the requesting origin to bypass the block safely.
-const corsOptions = {          
-    origin: allowedOrigins.length > 0 ? allowedOrigins : true, 
-    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],          
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],          
-    credentials: process.env.CORS_CREDENTIALS !== 'false', 
+const corsOptions = {               
+    origin: allowedOrigins.length > 0 ? allowedOrigins : true,      
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],               
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],               
+    credentials: process.env.CORS_CREDENTIALS !== 'false',  
 };
 
-// Initialize Socket.io with CORS 
-const io = new Server(server, { cors: corsOptions }); 
+const io = new Server(server, { cors: corsOptions });  
 
-app.use((req, res, next) => {          
-    const requestOrigin = req.headers.origin;          
-    if (requestOrigin && (allowedOrigins.length === 0 || allowedOrigins.includes(requestOrigin))) {                  
-        res.setHeader('Access-Control-Allow-Origin', requestOrigin);                  
-        res.setHeader('Vary', 'Origin');          
-    }          
-    res.setHeader('Access-Control-Allow-Methods', corsOptions.methods.join(','));          
-    res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));          
-    if (corsOptions.credentials) {                  
-        res.setHeader('Access-Control-Allow-Credentials', 'true');          
-    }          
-    if (req.method === 'OPTIONS') {                  
-        return res.sendStatus(204);          
+app.use((req, res, next) => {               
+    const requestOrigin = req.headers.origin;               
+    if (requestOrigin && (allowedOrigins.length === 0 || allowedOrigins.includes(requestOrigin))) {                           
+        res.setHeader('Access-Control-Allow-Origin', requestOrigin);                           
+        res.setHeader('Vary', 'Origin');               
     }               
-    
-    // Attach socket.io to the request     
-    req.io = io;     
-    next();  
+    res.setHeader('Access-Control-Allow-Methods', corsOptions.methods.join(','));               
+    res.setHeader('Access-Control-Allow-Headers', corsOptions.allowedHeaders.join(','));               
+    if (corsOptions.credentials) {                           
+        res.setHeader('Access-Control-Allow-Credentials', 'true');               
+    }               
+    if (req.method === 'OPTIONS') {                           
+        return res.sendStatus(204);               
+    }                         
+    req.io = io;          
+    next();   
 });
 
-app.use(express.json());  
+app.use(express.json());   
 
-// Link the routes  
-app.use('/api/users', userRoutes);  
-app.use('/api/caregiver', caregiverRoutes);  
-app.use('/api/elderly', elderlyRoutes);  
-app.use('/api/family', familyRoutes);  
-app.use('/api/pairing', pairingRoutes);  
-app.use('/api/chat', chatRoutes);  
+app.use('/api/users', userRoutes);   
+app.use('/api/caregiver', caregiverRoutes);   
+app.use('/api/elderly', elderlyRoutes);   
+app.use('/api/family', familyRoutes);   
+app.use('/api/pairing', pairingRoutes);   
+app.use('/api/chat', chatRoutes);   
 
-app.options('/api/users/register', (req, res) => {          
-    res.sendStatus(204);  
+app.options('/api/users/register', (req, res) => {               
+    res.sendStatus(204);   
 });
 
-const PORT = process.env.PORT || 3000;  
+// REAL-TIME MEDICATION ALARM SCHEDULER
+cron.schedule('* * * * *', async () => {
+    try {
+        const malaysiaTime = new Date(new Date().getTime() + 8 * 60 * 60 * 1000);
+        const currentTime = malaysiaTime.toISOString().slice(11, 16) + ':00'; // HH:mm:00
+        const currentDate = malaysiaTime.toISOString().slice(0, 10); // YYYY-MM-DD
+        
+        const query = `
+            SELECT m.*, u.Name as ElderlyName 
+            FROM Medications m 
+            JOIN Users u ON m.ElderlyId = u.Id 
+            WHERE m.ScheduledTime = ? 
+            AND (m.Frequency = 'daily' OR m.ScheduledDate = ?)
+        `;
+        
+        const [medications] = await db.execute(query, [currentTime, currentDate]);
 
-server.listen(PORT, () => {          
-    console.log(`Server running on port ${PORT} with WebSockets enabled`);  
+        medications.forEach(med => {
+            io.emit('MEDICATION_ALARM', {
+                medicationId: med.Id,
+                elderlyId: med.ElderlyId,
+                elderlyName: med.ElderlyName,
+                medicationName: med.MedicationName,
+                dosage: med.Dosage,
+                time: med.ScheduledTime
+            });
+        });
+    } catch (err) {
+        console.error("Medication Cron Job Error:", err);
+    }
+});
+
+const PORT = process.env.PORT || 3000;   
+server.listen(PORT, () => {               
+    console.log(`Server running on port ${PORT} with WebSockets enabled`);   
 });
