@@ -6,6 +6,7 @@ const caregiverController = require('../controllers/caregiverController');
 router.post('/tasks/:elderlyId', verifyToken, caregiverController.createTask);
 router.get('/tasks/:elderlyId', verifyToken, caregiverController.getCareTasks); // Fixed 404 Error
 router.post('/medications', verifyToken, caregiverController.scheduleMedication);
+router.get('/health/:elderlyId', verifyToken, caregiverController.getHealthRecords);
 router.post('/health', verifyToken, caregiverController.recordHealth);
 router.post('/reports', verifyToken, caregiverController.submitCareReport);
 router.get('/assigned-patients', verifyToken, caregiverController.getAssignedPatients);
