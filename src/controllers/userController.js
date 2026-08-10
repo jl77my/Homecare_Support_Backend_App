@@ -167,7 +167,8 @@ exports.getCareConnections = async (req, res) => {
     } else if (userRole === 'caregiver') {
       let eldQuery = `
         SELECT ca.Id AS ConnectionId, ca.ElderlyId AS ConnectedUserId, 
-               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(ca.Status, 'ACTIVE') as Status
+               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(ca.Status, 'ACTIVE') as Status,
+               (SELECT MAX(DatetimeCreated) FROM ChatMessages WHERE ElderlyId = ca.ElderlyId) as latestMessageTime
         FROM CaregiverAssignments ca 
         JOIN Users u ON ca.ElderlyId = u.Id
         WHERE ca.CaregiverId = ? AND COALESCE(ca.Status, 'ACTIVE') = 'ACTIVE'
@@ -192,7 +193,6 @@ exports.getCareConnections = async (req, res) => {
           WHERE COALESCE(fel.Status, 'ACTIVE') = 'ACTIVE' AND fel.ElderlyId IN (${placeholders})
         `, elderlyIds);
         
-        // Ensure no duplicated family member models
         const uniqueFm = Array.from(new Map(fm.map(item => [item.ConnectedUserId, item])).values());
         familyMembers = uniqueFm;
       }
@@ -200,7 +200,8 @@ exports.getCareConnections = async (req, res) => {
     } else if (userRole === 'family') {
       let eldQuery = `
         SELECT fel.Id AS ConnectionId, fel.ElderlyId AS ConnectedUserId, 
-               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(fel.Status, 'ACTIVE') as Status
+               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(fel.Status, 'ACTIVE') as Status,
+               (SELECT MAX(DatetimeCreated) FROM ChatMessages WHERE ElderlyId = fel.ElderlyId) as latestMessageTime
         FROM FamilyElderlyLinks fel 
         JOIN Users u ON fel.ElderlyId = u.Id
         WHERE fel.FamilyMemberId = ? AND COALESCE(fel.Status, 'ACTIVE') = 'ACTIVE'
@@ -224,7 +225,6 @@ exports.getCareConnections = async (req, res) => {
           WHERE COALESCE(ca.Status, 'ACTIVE') = 'ACTIVE' AND ca.ElderlyId IN (${placeholders})
         `, elderlyIds);
 
-        // Ensure no duplicated caregiver models
         const uniqueCg = Array.from(new Map(cg.map(item => [item.ConnectedUserId, item])).values());
         caregivers = uniqueCg;
       }
@@ -249,7 +249,6 @@ exports.deleteCareConnection = async (req, res) => {
   try {
     const timestamp = getCurrentMalaysiaMySQLDate();
     
-    // Check CaregiverAssignments
     const [cgRows] = await db.execute("SELECT * FROM CaregiverAssignments WHERE Id = ?", [connectionId]);
     if (cgRows.length > 0) {
       const conn = cgRows[0];
@@ -263,7 +262,6 @@ exports.deleteCareConnection = async (req, res) => {
       return res.status(403).json({ error: "Unauthorized to remove this caregiver." });
     }
 
-    // Check FamilyElderlyLinks
     const [famRows] = await db.execute("SELECT * FROM FamilyElderlyLinks WHERE Id = ?", [connectionId]);
     if (famRows.length > 0) {
       const conn = famRows[0];

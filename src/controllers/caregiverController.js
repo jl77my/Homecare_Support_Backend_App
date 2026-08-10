@@ -278,7 +278,8 @@ exports.getAssignedPatients = async (req, res) => {
     const caregiverId = req.user.userId;
     try {
         const query = `
-            SELECT u.Id as elderlyId, u.Name as name, u.Email as email, u.ProfilePhotoUrl as profilePhotoUrl, ca.Id as connectionId
+            SELECT u.Id as elderlyId, u.Name as name, u.Email as email, u.ProfilePhotoUrl as profilePhotoUrl, ca.Id as connectionId,
+                   (SELECT MAX(DatetimeCreated) FROM ChatMessages WHERE ElderlyId = u.Id) as latestMessageTime
             FROM Users u
             JOIN CaregiverAssignments ca ON u.Id = ca.ElderlyId
             WHERE ca.CaregiverId = ? AND (ca.Status IS NULL OR ca.Status = '' OR ca.Status = 'ACTIVE')

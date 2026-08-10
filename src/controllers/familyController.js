@@ -234,7 +234,8 @@ exports.getLinkedElderly = async (req, res) => {
         const query = `
             SELECT f.ElderlyId AS elderlyId, u.Name AS name, u.Email AS email,
                    u.ProfilePhotoUrl AS profilePhotoUrl,
-                   f.Relationship AS relationship, f.Id AS connectionId
+                   f.Relationship AS relationship, f.Id AS connectionId,
+                   (SELECT MAX(DatetimeCreated) FROM ChatMessages WHERE ElderlyId = f.ElderlyId) as latestMessageTime
             FROM FamilyElderlyLinks f
             JOIN Users u ON f.ElderlyId = u.Id
             WHERE f.FamilyMemberId = ? AND (f.Status IS NULL OR f.Status = '' OR f.Status = 'ACTIVE')
