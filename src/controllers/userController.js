@@ -16,7 +16,7 @@ exports.registerUser = async (req, res) => {
         const hashedPassword = await bcrypt.hash(Password, saltRounds);
         const newId = uuidv4();
         const timestamp = getCurrentMalaysiaMySQLDate();
-                 
+                           
         const query = `
             INSERT INTO Users (Id, Name, Email, Password, Role, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated) 
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -50,20 +50,20 @@ exports.loginUser = async (req, res) => {
         if (rows.length === 0) {
             return res.status(401).json({ error: "Invalid Email or Password" });
         }
-                 
+                           
         const user = rows[0];
         const isMatch = await bcrypt.compare(Password, user.Password);
         if (!isMatch) {
             return res.status(401).json({ error: "Invalid Email or Password" });
         }
-                 
+                           
         const tokenPayload = {
             id: user.Id,
             email: user.Email,
             role: user.Role
         };
         const token = jwt.sign(tokenPayload, jwtSecret, { expiresIn: '1h' });
-                 
+                           
         res.status(200).json({ 
             message: "Login successful", 
             token,
@@ -138,7 +138,8 @@ exports.changePassword = async (req, res) => {
 exports.getCareConnections = async (req, res) => {
   const userId = req.user.userId;
   const userRole = req.user.role.toLowerCase();
-  
+  const filterElderlyId = req.query.elderlyId; 
+
   try {
     let elderlyList = [];
     let caregivers = [];
@@ -146,8 +147,8 @@ exports.getCareConnections = async (req, res) => {
 
     if (userRole === 'elderly') {
       const [cg] = await db.execute(`
-        SELECT ca.Id AS ConnectionId, ca.ElderlyId, ca.CaregiverId AS ConnectedUserId,
-               u.Name AS ConnectedUserName, 'caregiver' AS ConnectedUserRole, COALESCE(ca.Status, 'ACTIVE') as Status
+        SELECT ca.Id AS ConnectionId, ca.CaregiverId AS ConnectedUserId,
+               u.Name AS ConnectedUserName, 'caregiver' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(ca.Status, 'ACTIVE') as Status
         FROM CaregiverAssignments ca
         JOIN Users u ON ca.CaregiverId = u.Id
         WHERE ca.ElderlyId = ? AND COALESCE(ca.Status, 'ACTIVE') = 'ACTIVE'
@@ -155,8 +156,8 @@ exports.getCareConnections = async (req, res) => {
       caregivers = cg;
 
       const [fm] = await db.execute(`
-        SELECT fel.Id AS ConnectionId, fel.ElderlyId, fel.FamilyMemberId AS ConnectedUserId,
-               u.Name AS ConnectedUserName, 'family' AS ConnectedUserRole, COALESCE(fel.Status, 'ACTIVE') as Status
+        SELECT fel.Id AS ConnectionId, fel.FamilyMemberId AS ConnectedUserId,
+               u.Name AS ConnectedUserName, 'family' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(fel.Status, 'ACTIVE') as Status
         FROM FamilyElderlyLinks fel
         JOIN Users u ON fel.FamilyMemberId = u.Id
         WHERE fel.ElderlyId = ? AND COALESCE(fel.Status, 'ACTIVE') = 'ACTIVE'
@@ -164,49 +165,68 @@ exports.getCareConnections = async (req, res) => {
       familyMembers = fm;
 
     } else if (userRole === 'caregiver') {
-      const [eld] = await db.execute(`
+      let eldQuery = `
         SELECT ca.Id AS ConnectionId, ca.ElderlyId AS ConnectedUserId, 
-               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, COALESCE(ca.Status, 'ACTIVE') as Status
+               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(ca.Status, 'ACTIVE') as Status
         FROM CaregiverAssignments ca 
         JOIN Users u ON ca.ElderlyId = u.Id
         WHERE ca.CaregiverId = ? AND COALESCE(ca.Status, 'ACTIVE') = 'ACTIVE'
-      `, [userId]);
+      `;
+      const queryArgs = [userId];
+      if (filterElderlyId) {
+        eldQuery += " AND ca.ElderlyId = ?";
+        queryArgs.push(filterElderlyId);
+      }
+      
+      const [eld] = await db.execute(eldQuery, queryArgs);
       elderlyList = eld;
 
       if (eld.length > 0) {
         const elderlyIds = eld.map(e => e.ConnectedUserId);
         const placeholders = elderlyIds.map(() => '?').join(',');
         const [fm] = await db.execute(`
-          SELECT fel.Id AS ConnectionId, fel.ElderlyId, fel.FamilyMemberId AS ConnectedUserId,
-                 u.Name AS ConnectedUserName, 'family' AS ConnectedUserRole, COALESCE(fel.Status, 'ACTIVE') as Status
+          SELECT fel.Id AS ConnectionId, fel.FamilyMemberId AS ConnectedUserId,
+                 u.Name AS ConnectedUserName, 'family' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(fel.Status, 'ACTIVE') as Status
           FROM FamilyElderlyLinks fel 
           JOIN Users u ON fel.FamilyMemberId = u.Id
           WHERE COALESCE(fel.Status, 'ACTIVE') = 'ACTIVE' AND fel.ElderlyId IN (${placeholders})
         `, elderlyIds);
-        familyMembers = fm;
+        
+        // Ensure no duplicated family member models
+        const uniqueFm = Array.from(new Map(fm.map(item => [item.ConnectedUserId, item])).values());
+        familyMembers = uniqueFm;
       }
 
     } else if (userRole === 'family') {
-      const [eld] = await db.execute(`
+      let eldQuery = `
         SELECT fel.Id AS ConnectionId, fel.ElderlyId AS ConnectedUserId, 
-               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, COALESCE(fel.Status, 'ACTIVE') as Status
+               u.Name AS ConnectedUserName, 'elderly' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(fel.Status, 'ACTIVE') as Status
         FROM FamilyElderlyLinks fel 
         JOIN Users u ON fel.ElderlyId = u.Id
         WHERE fel.FamilyMemberId = ? AND COALESCE(fel.Status, 'ACTIVE') = 'ACTIVE'
-      `, [userId]);
+      `;
+      const queryArgs = [userId];
+      if (filterElderlyId) {
+        eldQuery += " AND fel.ElderlyId = ?";
+        queryArgs.push(filterElderlyId);
+      }
+      const [eld] = await db.execute(eldQuery, queryArgs);
       elderlyList = eld;
 
       if (eld.length > 0) {
         const elderlyIds = eld.map(e => e.ConnectedUserId);
         const placeholders = elderlyIds.map(() => '?').join(',');
         const [cg] = await db.execute(`
-          SELECT ca.Id AS ConnectionId, ca.ElderlyId, ca.CaregiverId AS ConnectedUserId,
-                 u.Name AS ConnectedUserName, 'caregiver' AS ConnectedUserRole, COALESCE(ca.Status, 'ACTIVE') as Status
+          SELECT ca.Id AS ConnectionId, ca.CaregiverId AS ConnectedUserId,
+                 u.Name AS ConnectedUserName, 'caregiver' AS ConnectedUserRole, u.ProfilePhotoUrl as ProfilePhotoUrl, COALESCE(ca.Status, 'ACTIVE') as Status
           FROM CaregiverAssignments ca 
           JOIN Users u ON ca.CaregiverId = u.Id
           WHERE COALESCE(ca.Status, 'ACTIVE') = 'ACTIVE' AND ca.ElderlyId IN (${placeholders})
         `, elderlyIds);
-        caregivers = cg;
+
+        // Ensure no duplicated caregiver models
+        const uniqueCg = Array.from(new Map(cg.map(item => [item.ConnectedUserId, item])).values());
+        caregivers = uniqueCg;
       }
     }
 
@@ -229,6 +249,7 @@ exports.deleteCareConnection = async (req, res) => {
   try {
     const timestamp = getCurrentMalaysiaMySQLDate();
     
+    // Check CaregiverAssignments
     const [cgRows] = await db.execute("SELECT * FROM CaregiverAssignments WHERE Id = ?", [connectionId]);
     if (cgRows.length > 0) {
       const conn = cgRows[0];
@@ -242,6 +263,7 @@ exports.deleteCareConnection = async (req, res) => {
       return res.status(403).json({ error: "Unauthorized to remove this caregiver." });
     }
 
+    // Check FamilyElderlyLinks
     const [famRows] = await db.execute("SELECT * FROM FamilyElderlyLinks WHERE Id = ?", [connectionId]);
     if (famRows.length > 0) {
       const conn = famRows[0];

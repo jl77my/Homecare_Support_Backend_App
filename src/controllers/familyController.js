@@ -233,10 +233,11 @@ exports.getLinkedElderly = async (req, res) => {
     try {
         const query = `
             SELECT f.ElderlyId AS elderlyId, u.Name AS name, u.Email AS email,
+                   u.ProfilePhotoUrl AS profilePhotoUrl,
                    f.Relationship AS relationship, f.Id AS connectionId
             FROM FamilyElderlyLinks f
             JOIN Users u ON f.ElderlyId = u.Id
-            WHERE f.FamilyMemberId = ? AND COALESCE(f.Status, 'ACTIVE') = 'ACTIVE'
+            WHERE f.FamilyMemberId = ? AND (f.Status IS NULL OR f.Status = '' OR f.Status = 'ACTIVE')
             ORDER BY f.DatetimeCreated DESC
         `;
         const [seniors] = await db.execute(query, [familyMemberId]);

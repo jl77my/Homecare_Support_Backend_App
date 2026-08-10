@@ -69,7 +69,7 @@ exports.getCareTasks = async (req, res) => {
     const { elderlyId } = req.params;
     try {
         const [assignmentCheck] = await db.execute(
-            "SELECT Id FROM CaregiverAssignments WHERE CaregiverId = ? AND ElderlyId = ? AND Status = 'ACTIVE'",
+            "SELECT Id FROM CaregiverAssignments WHERE CaregiverId = ? AND ElderlyId = ? AND (Status IS NULL OR Status = '' OR Status = 'ACTIVE')",
             [caregiverId, elderlyId]
         );
         if (assignmentCheck.length === 0) {
@@ -172,7 +172,7 @@ exports.getHealthRecords = async (req, res) => {
     const { elderlyId } = req.params;
     try {
         const [assignmentCheck] = await db.execute(
-            "SELECT Id FROM CaregiverAssignments WHERE CaregiverId = ? AND ElderlyId = ? AND Status = 'ACTIVE'",
+            "SELECT Id FROM CaregiverAssignments WHERE CaregiverId = ? AND ElderlyId = ? AND (Status IS NULL OR Status = '' OR Status = 'ACTIVE')",
             [caregiverId, elderlyId]
         );
         if (assignmentCheck.length === 0) {
@@ -278,10 +278,10 @@ exports.getAssignedPatients = async (req, res) => {
     const caregiverId = req.user.userId;
     try {
         const query = `
-            SELECT u.Id as elderlyId, u.Name as name, u.Email as email, ca.Id as connectionId
+            SELECT u.Id as elderlyId, u.Name as name, u.Email as email, u.ProfilePhotoUrl as profilePhotoUrl, ca.Id as connectionId
             FROM Users u
             JOIN CaregiverAssignments ca ON u.Id = ca.ElderlyId
-            WHERE ca.CaregiverId = ? AND ca.Status = 'ACTIVE'
+            WHERE ca.CaregiverId = ? AND (ca.Status IS NULL OR ca.Status = '' OR ca.Status = 'ACTIVE')
         `;
         const [patients] = await db.execute(query, [caregiverId]);
         return res.status(200).json({ patients });
