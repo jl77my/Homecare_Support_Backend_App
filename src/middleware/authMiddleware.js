@@ -8,8 +8,12 @@ const verifyToken = (req, res, next) => {
     }
 
    try {
+        if (!process.env.JWT_SECRET) {
+            console.error('JWT_SECRET is not configured');
+            return res.status(500).json({ error: "Authentication is not configured" });
+        }
         // 3. Verify cryptographic token signature using secret
-        const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_fallback_secret_key');
+        const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
         // 4. Attach decoded payload to req.user
         // Expected payload structure: { userId: 'xxx-guid-xxx', role: 'caregiver', email: '...' }

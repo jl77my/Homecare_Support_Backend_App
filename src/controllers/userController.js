@@ -1,6 +1,6 @@
 // controllers/userController.js
 const db = require('../config/db');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/helper');
@@ -14,7 +14,7 @@ exports.registerUser = async (req, res) => {
     try {
         const saltRounds = 10;
         const hashedPassword = await bcrypt.hash(Password, saltRounds);
-        const newId = uuidv4();
+        const newId = crypto.randomUUID();
         const timestamp = getCurrentMalaysiaMySQLDate();
                            
         const query = `

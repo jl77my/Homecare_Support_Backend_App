@@ -1,5 +1,5 @@
 const db = require('../config/db');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { getCurrentMalaysiaMySQLDate } = require('../helper/helper');
 
 exports.getChannelMessages = async (req, res) => {
@@ -41,7 +41,7 @@ exports.sendMessage = async (req, res) => {
   }
 
   try {
-    const messageGuid = uuidv4();
+    const messageGuid = crypto.randomUUID();
     const timestamp = getCurrentMalaysiaMySQLDate();
 
     const query = `

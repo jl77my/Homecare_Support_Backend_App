@@ -2,6 +2,7 @@
 const db = require('../config/db');
 const crypto = require('crypto');
 const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/helper');
+const { analyzeHealthRecords, evaluateHealthAlerts } = require('../services/healthPredictionService');
 
 exports.createTask = async (req, res) => {
     const familyMemberId = req.user.userId;
@@ -89,26 +90,10 @@ exports.getHealthRecords = async (req, res) => {
             ORDER BY DatetimeCreated DESC
         `;
         const [records] = await db.execute(query, [elderlyId]);
-        const recordsWithAlerts = records.map(rec => {
-            let alerts = [];
-            if (rec.BloodPressure) {
-                const parts = rec.BloodPressure.split('/');
-                if (parts.length === 2) {
-                    const sys = parseInt(parts[0], 10);
-                    const dia = parseInt(parts[1], 10);
-                    if (sys >= 140 || dia >= 90) alerts.push("High Blood Pressure Alert!");
-                }
-            }
-            if (rec.HeartRate) {
-                const hr = parseInt(rec.HeartRate, 10);
-                if (hr > 100 || hr < 60) alerts.push("Abnormal Heart Rate Alert!");
-            }
-            if (rec.BloodSugar) {
-                const sugar = parseFloat(rec.BloodSugar);
-                if (sugar > 11.0) alerts.push("High Blood Glucose Alert!");
-            }
-            return { ...rec, alerts };
-        });
+        const recordsWithAlerts = records.map(rec => ({
+            ...rec,
+            alerts: evaluateHealthAlerts(rec.BloodPressure, rec.HeartRate, rec.BloodSugar),
+        }));
         return res.status(200).json({ records: recordsWithAlerts });
     } catch (err) {
         return res.status(500).json({ error: "Failed to fetch health records" });
@@ -245,5 +230,31 @@ exports.getLinkedElderly = async (req, res) => {
         return res.status(200).json({ seniors });
     } catch (err) {
         return res.status(500).json({ error: "Failed to fetch linked elderly list" });
+    }
+};
+
+exports.getHealthPrediction = async (req, res) => {
+    const familyMemberId = req.user.userId;
+    const { elderlyId } = req.params;
+    try {
+        const [links] = await db.execute(
+            "SELECT Id FROM FamilyElderlyLinks WHERE FamilyMemberId = ? AND ElderlyId = ? AND (Status IS NULL OR Status = '' OR Status = 'ACTIVE')",
+            [familyMemberId, elderlyId]
+        );
+        if (links.length === 0) {
+            return res.status(403).json({ error: "Unauthorized: You are not linked to this elderly user." });
+        }
+
+        const [records] = await db.execute(`
+            SELECT Id, HeartRate, BloodPressure, BloodSugar, DatetimeCreated
+            FROM HealthRecords
+            WHERE ElderlyId = ?
+            ORDER BY DatetimeCreated DESC
+            LIMIT 90
+        `, [elderlyId]);
+
+        return res.status(200).json({ prediction: analyzeHealthRecords(records) });
+    } catch (err) {
+        return res.status(500).json({ error: "Failed to generate health prediction" });
     }
 };

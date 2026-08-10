@@ -2,27 +2,7 @@
 const db = require('../config/db');
 const crypto = require('crypto');
 const { formatMySQLDate, getCurrentMalaysiaMySQLDate } = require('../helper/helper');
-
-const evaluateHealthAlerts = (bloodPressure, heartRate, bloodSugar) => {
-    let alerts = [];
-    if (bloodPressure) {
-        const parts = bloodPressure.split('/');
-        if (parts.length === 2) {
-            const sys = parseInt(parts[0], 10);
-            const dia = parseInt(parts[1], 10);
-            if (sys >= 140 || dia >= 90) alerts.push("High Blood Pressure Alert!");
-        }
-    }
-    if (heartRate) {
-        const hr = parseInt(heartRate, 10);
-        if (hr > 100 || hr < 60) alerts.push("Abnormal Heart Rate Alert!");
-    }
-    if (bloodSugar) {
-        const sugar = parseFloat(bloodSugar);
-        if (sugar > 11.0) alerts.push("High Blood Glucose Alert!");
-    }
-    return alerts;
-};
+const { analyzeHealthRecords, evaluateHealthAlerts } = require('../services/healthPredictionService');
 
 exports.createTask = async (req, res) => {
     const caregiverId = req.user.userId;
@@ -306,5 +286,31 @@ exports.getElderlyMoods = async (req, res) => {
         return res.status(200).json({ todayMood });
     } catch (err) {
         return res.status(500).json({ error: "Failed to fetch elderly mood history" });
+    }
+};
+
+exports.getHealthPrediction = async (req, res) => {
+    const caregiverId = req.user.userId;
+    const { elderlyId } = req.params;
+    try {
+        const [assignments] = await db.execute(
+            "SELECT Id FROM CaregiverAssignments WHERE CaregiverId = ? AND ElderlyId = ? AND (Status IS NULL OR Status = '' OR Status = 'ACTIVE')",
+            [caregiverId, elderlyId]
+        );
+        if (assignments.length === 0) {
+            return res.status(403).json({ error: "Unauthorized: You are not assigned to this patient." });
+        }
+
+        const [records] = await db.execute(`
+            SELECT Id, HeartRate, BloodPressure, BloodSugar, DatetimeCreated
+            FROM HealthRecords
+            WHERE ElderlyId = ?
+            ORDER BY DatetimeCreated DESC
+            LIMIT 90
+        `, [elderlyId]);
+
+        return res.status(200).json({ prediction: analyzeHealthRecords(records) });
+    } catch (err) {
+        return res.status(500).json({ error: "Failed to generate health prediction" });
     }
 };

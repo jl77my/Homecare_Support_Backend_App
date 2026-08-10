@@ -11,6 +11,7 @@ const elderlyRoutes = require('./routes/elderlyRoutes');
 const familyRoutes = require('./routes/familyRoutes');
 const pairingRoutes = require('./routes/pairingRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const agentRoutes = require('./routes/agentRoutes');
 
 dotenv.config();
 
@@ -59,6 +60,11 @@ app.use('/api/elderly', elderlyRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/pairing', pairingRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/agent', agentRoutes);
+
+app.get('/api/health', (req, res) => {
+    res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
 
 app.options('/api/users/register', (req, res) => {
     res.sendStatus(204);

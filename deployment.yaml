@@ -53,6 +53,18 @@ spec:
                 secretKeyRef:
                   name: homecare-backend-secrets
                   key: JWT_SECRET
+            - name: GEMINI_API_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: homecare-backend-secrets
+                  key: GEMINI_API_KEY
+            - name: AGENT_ACTION_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: homecare-backend-secrets
+                  key: AGENT_ACTION_SECRET
+            - name: GEMINI_MODEL
+              value: "gemini-3.1-flash-lite"
             - name: CORS_ORIGIN
               valueFrom:
                 configMapKeyRef:

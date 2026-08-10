@@ -1,6 +1,6 @@
 // controllers/pairingController.js
 const db = require('../config/db');
-const { v4: uuidv4 } = require('uuid');
+const crypto = require('crypto');
 const { getCurrentMalaysiaMySQLDate, formatMySQLDate } = require('../helper/helper');
 
 function generateRandomCode(prefix) {
@@ -30,7 +30,7 @@ exports.generateCode = async (req, res) => {
     `;
     await db.execute(invalidateQuery, [elderlyGuid, timestamp, elderlyGuid, roleTarget || 'caregiver']);
 
-    const codeGuid = uuidv4();
+    const codeGuid = crypto.randomUUID();
     const insertQuery = `
       INSERT INTO PairingCodes 
       (Id, ElderlyId, Code, RoleTarget, IsUsed, ExpiresAt, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated) 
@@ -71,7 +71,7 @@ exports.consumeCode = async (req, res) => {
 
     const pairingRecord = rows[0];
     const elderlyId = pairingRecord.ElderlyId;
-    const assignmentId = uuidv4();
+    const assignmentId = crypto.randomUUID();
     const timestamp = getCurrentMalaysiaMySQLDate();
 
     // 2. Insert the assignment

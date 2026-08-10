@@ -11,8 +11,9 @@ router.put('/tasks/:taskId/status', verifyToken, caregiverController.updateTaskS
 router.post('/medications', verifyToken, caregiverController.scheduleMedication);   
 router.put('/medications/:medicationId', verifyToken, caregiverController.editMedication); 
 
-router.get('/health/:elderlyId', verifyToken, caregiverController.getHealthRecords);   
-router.post('/health', verifyToken, caregiverController.recordHealth);   
+router.get('/health/:elderlyId/prediction', verifyToken, caregiverController.getHealthPrediction);
+router.get('/health/:elderlyId', verifyToken, caregiverController.getHealthRecords);
+router.post('/health', verifyToken, caregiverController.recordHealth);
 
 router.post('/reports', verifyToken, caregiverController.submitCareReport);   
 router.get('/reports/:elderlyId', verifyToken, caregiverController.getCareReports);  
