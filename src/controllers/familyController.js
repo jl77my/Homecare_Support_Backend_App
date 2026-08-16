@@ -138,6 +138,29 @@ exports.acknowledgeReport = async (req, res) => {
   let { comment } = req.body;
   const id = crypto.randomUUID();
   try {
+    const [linkedReports] = await db.execute(`
+      SELECT cr.Id
+      FROM CareReports cr
+      JOIN FamilyElderlyLinks fel ON fel.ElderlyId = cr.ElderlyId
+      WHERE cr.Id = ? AND fel.FamilyMemberId = ?
+        AND (fel.Status IS NULL OR fel.Status = '' OR fel.Status = 'ACTIVE')
+      LIMIT 1
+    `, [reportId, familyMemberId]);
+    if (linkedReports.length === 0) {
+      return res.status(403).json({ error: "You do not have access to this care report." });
+    }
+
+    const [existingAcknowledgements] = await db.execute(
+      'SELECT Id FROM CareReportAcknowledgements WHERE ReportId = ? AND FamilyMemberId = ? LIMIT 1',
+      [reportId, familyMemberId]
+    );
+    if (existingAcknowledgements.length > 0) {
+      return res.status(409).json({
+        error: "You have already acknowledged this care report.",
+        code: "REPORT_ALREADY_ACKNOWLEDGED"
+      });
+    }
+
     const timestamp = getCurrentMalaysiaMySQLDate();
     if (!comment || comment.trim() === '') {
         const [userRows] = await db.execute('SELECT Name FROM Users WHERE Id = ?', [familyMemberId]);
@@ -147,11 +170,30 @@ exports.acknowledgeReport = async (req, res) => {
     const query = `
       INSERT INTO CareReportAcknowledgements 
       (Id, ReportId, FamilyMemberId, Comment, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      SELECT ?, ?, ?, ?, ?, ?, ?, ?
+      WHERE NOT EXISTS (
+        SELECT 1 FROM CareReportAcknowledgements
+        WHERE ReportId = ? AND FamilyMemberId = ?
+      )
     `;
-    await db.execute(query, [id, reportId, familyMemberId, comment, familyMemberId, timestamp, familyMemberId, timestamp]);
+    const [insertResult] = await db.execute(query, [
+      id, reportId, familyMemberId, comment, familyMemberId, timestamp, familyMemberId, timestamp,
+      reportId, familyMemberId
+    ]);
+    if (!insertResult || insertResult.affectedRows !== 1) {
+      return res.status(409).json({
+        error: "You have already acknowledged this care report.",
+        code: "REPORT_ALREADY_ACKNOWLEDGED"
+      });
+    }
     return res.status(201).json({ message: "Report acknowledged successfully." });
   } catch (err) {
+    if (err && err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({
+        error: "You have already acknowledged this care report.",
+        code: "REPORT_ALREADY_ACKNOWLEDGED"
+      });
+    }
     return res.status(500).json({ error: "Failed to acknowledge report" });
   }
 };

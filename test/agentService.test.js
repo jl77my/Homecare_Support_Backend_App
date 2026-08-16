@@ -101,7 +101,7 @@ test('returns a signed confirmation preview for a valid action', async () => {
           type: 'create_task',
           title: 'Check blood pressure',
           description: 'Record the reading in the health section.',
-          dueDate: '2026-08-11 09:00:00',
+          dueDate: '2099-08-11 09:00:00',
         },
       };
     },

@@ -15,7 +15,7 @@ test('normalizes a complete task proposal', () => {
     type: 'create_task',
     title: 'Check bathroom floor',
     description: 'Dry the wet tiles and place the non-slip mat.',
-    dueDate: '2026-08-11 09:00:00',
+    dueDate: '2099-08-11 09:00:00',
   });
   assert.equal(action.type, 'create_task');
   assert.equal(action.title, 'Check bathroom floor');
@@ -26,7 +26,7 @@ test('rejects a medication proposal without dosage', () => {
     () => normalizeAction({
       type: 'schedule_medication',
       title: 'Medicine A',
-      scheduledDate: '2026-08-11',
+      scheduledDate: '2099-08-11',
       scheduledTime: '09:00:00',
       frequency: 'daily',
     }),
@@ -43,7 +43,7 @@ test('action token is bound to the requesting user', () => {
       type: 'create_task',
       title: 'Hydration check',
       description: '',
-      dueDate: '2026-08-11 10:00:00',
+      dueDate: '2099-08-11 10:00:00',
     },
   });
   const payload = verifyActionToken(token, user);
@@ -70,7 +70,7 @@ test('task execution uses parameterized SQL and the linked elderly id', async ()
         type: 'create_task',
         title: 'Prepare breakfast',
         description: 'Prepare oatmeal.',
-        dueDate: '2026-08-11 08:00:00',
+        dueDate: '2099-08-11 08:00:00',
       },
     },
     'family-1',

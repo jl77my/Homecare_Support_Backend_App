@@ -57,7 +57,13 @@ Open MySQL Workbench or phpMyAdmin, select the same database configured in `DB_N
 database/agent_migration.sql
 ```
 
-This creates `AgentActionExecutions`. The table prevents the same confirmation token from creating a duplicate record and supplies an audit trail. It does not alter your existing tables.
+Then run:
+
+```text
+migrations/20260817_unique_care_report_acknowledgement.sql
+```
+
+The first migration creates `AgentActionExecutions` for action replay protection and auditing. The second removes legacy duplicate report acknowledgements and adds a database-level rule that allows each family account to acknowledge a report only once. Back up the database before applying migrations.
 
 ## 3. Start and verify the backend
 
