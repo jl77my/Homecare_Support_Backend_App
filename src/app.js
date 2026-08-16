@@ -4,6 +4,7 @@ const http = require('http');
 const { Server } = require('socket.io');
 const dotenv = require('dotenv');
 const cron = require('node-cron');
+const jwt = require('jsonwebtoken');
 const db = require('./config/db');
 const userRoutes = require('./routes/userRoutes');
 const caregiverRoutes = require('./routes/caregiverRoutes');
@@ -31,6 +32,26 @@ const corsOptions = {
 };
 
 const io = new Server(server, { cors: corsOptions });
+
+// A client joins only its own private room after its JWT has been verified.
+// Existing sockets that do not register still receive non-sensitive global
+// events such as medication alarms.
+io.on('connection', (socket) => {
+    socket.on('REGISTER_USER', (payload = {}) => {
+        try {
+            const token = typeof payload === 'string' ? payload : payload.token;
+            if (!token) return;
+
+            const decoded = jwt.verify(token, process.env.JWT_SECRET);
+            const userId = decoded.userId || decoded.id;
+            if (!userId) return;
+
+            socket.join(`user:${userId}`);
+        } catch (error) {
+            console.warn('Rejected SOS socket registration:', error.message);
+        }
+    });
+});
 
 app.use((req, res, next) => {
     const requestOrigin = req.headers.origin;

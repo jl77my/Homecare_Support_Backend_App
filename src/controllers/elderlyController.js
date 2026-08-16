@@ -64,21 +64,86 @@ exports.logMood = async (req, res) => {
 exports.triggerSos = async (req, res) => {      
   const elderlyId = req.user.userId;      
   const id = crypto.randomUUID();      
+  const { latitude, longitude, accuracy } = req.body;
+
+  const parsedLatitude = latitude == null ? null : Number(latitude);
+  const parsedLongitude = longitude == null ? null : Number(longitude);
+  const parsedAccuracy = accuracy == null ? null : Number(accuracy);
+
+  const hasValidLocation =
+    Number.isFinite(parsedLatitude) && parsedLatitude >= -90 && parsedLatitude <= 90 &&
+    Number.isFinite(parsedLongitude) && parsedLongitude >= -180 && parsedLongitude <= 180;
+
+  if ((latitude != null || longitude != null) && !hasValidLocation) {
+    return res.status(400).json({ error: 'Valid latitude and longitude are required.' });
+  }
+
   try {          
     const timestamp = getCurrentMalaysiaMySQLDate();          
     
     // Satisfies the 5 mandatory DB audit columns exactly
     const query = `              
-      INSERT INTO SosAlerts (Id, ElderlyId, Status, CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)              
-      VALUES (?, ?, 'Active', ?, ?, ?, ?)          
+      INSERT INTO SosAlerts
+        (Id, ElderlyId, Status, Latitude, Longitude, LocationAccuracy,
+         CreatedBy, DatetimeCreated, UpdatedBy, DatetimeUpdated)
+      VALUES (?, ?, 'Active', ?, ?, ?, ?, ?, ?, ?)
     `;          
-    await db.execute(query, [id, elderlyId, elderlyId, timestamp, elderlyId, timestamp]);               
+    await db.execute(query, [
+      id,
+      elderlyId,
+      hasValidLocation ? parsedLatitude : null,
+      hasValidLocation ? parsedLongitude : null,
+      Number.isFinite(parsedAccuracy) && parsedAccuracy >= 0 ? parsedAccuracy : null,
+      elderlyId,
+      timestamp,
+      elderlyId,
+      timestamp,
+    ]);
+
+    const [[elderly]] = await db.execute(
+      'SELECT Name FROM Users WHERE Id = ? LIMIT 1',
+      [elderlyId]
+    );
+
+    const [recipients] = await db.execute(
+      `
+        SELECT DISTINCT RecipientId
+        FROM (
+          SELECT CaregiverId AS RecipientId
+          FROM CaregiverAssignments
+          WHERE ElderlyId = ? AND (Status IS NULL OR Status = '' OR Status = 'ACTIVE')
+          UNION
+          SELECT FamilyMemberId AS RecipientId
+          FROM FamilyElderlyLinks
+          WHERE ElderlyId = ? AND (Status IS NULL OR Status = '' OR Status = 'ACTIVE')
+        ) linkedRecipients
+      `,
+      [elderlyId, elderlyId]
+    );
+
+    const alertPayload = {
+      elderlyId,
+      elderlyName: elderly?.Name || 'Elderly user',
+      alertId: id,
+      status: 'Active',
+      latitude: hasValidLocation ? parsedLatitude : null,
+      longitude: hasValidLocation ? parsedLongitude : null,
+      accuracy: Number.isFinite(parsedAccuracy) && parsedAccuracy >= 0 ? parsedAccuracy : null,
+      triggeredAt: timestamp,
+    };
     
-    // Broadcast the real-time event to connected Caregivers and Family Members
-    if (req.io) {         
-      req.io.emit('SOS_ALERT_EMITTED', { elderlyId, alertId: id, status: 'Active' });     
+    // Send sensitive location data only to actively linked caregivers/family.
+    if (req.io) {        
+      recipients.forEach(({ RecipientId }) => {
+        req.io.to(`user:${RecipientId}`).emit('SOS_ALERT_EMITTED', alertPayload);
+      });
     }     
-    return res.status(201).json({ message: "SOS Emergency Alert Sent!", alertId: id });      
+    return res.status(201).json({
+      message: "SOS Emergency Alert Sent!",
+      alertId: id,
+      notifiedRecipients: recipients.length,
+      locationShared: hasValidLocation,
+    });      
   } catch (err) {          
     console.error("Trigger SOS Error:", err);          
     return res.status(500).json({ error: "Failed to trigger SOS alert" }); 
